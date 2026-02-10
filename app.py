@@ -20,8 +20,8 @@ from openai import OpenAI
 # 页面配置
 # ============================================================
 st.set_page_config(
-    page_title="Birdie · 鸟类智能识别",
-    page_icon="🪶",
+    page_title="影禽 BirdEye",
+    page_icon="🦅",
     layout="wide",
     initial_sidebar_state="collapsed",
 )
@@ -665,9 +665,9 @@ def create_organized_zip(results_with_bytes: list) -> bytes:
 # ============================================================
 st.markdown("""
 <div class="hero-section">
-    <span class="hero-icon">🪶</span>
-    <h1 class="hero-title">Birdie</h1>
-    <p class="hero-subtitle">智能鸟类识别 · 摄影评分 · 分类整理</p>
+    <span class="hero-icon">🦅</span>
+    <h1 class="hero-title">影禽</h1>
+    <p class="hero-subtitle">BirdEye · 智能鸟类识别 · 摄影评分 · 分类整理</p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -727,13 +727,19 @@ if uploaded_files:
         st.caption(f"还有 {len(uploaded_files) - 8} 张照片未展示")
 
 # ============================================================
-# 识别按钮
+# 上传后自动识别
 # ============================================================
 if uploaded_files and api_key:
-    st.markdown("<br>", unsafe_allow_html=True)
-    if st.button("开始识别", type="primary", use_container_width=True):
+    # 用上传文件的名称列表作为缓存 key，避免重复识别
+    file_key = "_".join(sorted(f.name for f in uploaded_files))
+
+    if st.session_state.get("last_file_key") != file_key:
+        st.session_state["last_file_key"] = file_key
+        st.session_state.pop("results_with_bytes", None)
+        st.session_state.pop("zip_bytes", None)
+
         results_with_bytes = []
-        progress_bar = st.progress(0, text="准备中...")
+        progress_bar = st.progress(0, text="正在识别中...")
 
         for idx, uploaded_file in enumerate(uploaded_files):
             progress_text = f"正在识别 [{idx + 1}/{len(uploaded_files)}]: {uploaded_file.name}"
@@ -779,10 +785,14 @@ if uploaded_files and api_key:
                 "suffix": suffix,
             })
 
-        progress_bar.progress(1.0, text="✅ 识别完成！")
+        progress_bar.progress(1.0, text="✅ 识别完成！正在打包...")
 
-        # 保存到 session_state
+        # 自动生成 ZIP
+        zip_bytes = create_organized_zip(results_with_bytes)
         st.session_state["results_with_bytes"] = results_with_bytes
+        st.session_state["zip_bytes"] = zip_bytes
+
+        progress_bar.progress(1.0, text="✅ 全部完成！")
 
 
 # ============================================================
@@ -940,44 +950,28 @@ if "results_with_bytes" in st.session_state:
     st.markdown('<p class="section-title">下载整理</p>', unsafe_allow_html=True)
     st.markdown(
         '<p class="section-subtitle">'
-        '照片将按 目 / 科 层级分文件夹整理，并重命名为 鸟名_地点_时间_评分 格式'
+        '照片已按 目 / 科 层级分文件夹整理，并重命名为 鸟名_地点_时间_评分 格式'
         '</p>',
         unsafe_allow_html=True,
     )
 
     dl_col_left, dl_col_center, dl_col_right = st.columns([1, 2, 1])
     with dl_col_center:
-        if st.button("生成下载包", use_container_width=True):
-            with st.spinner("正在打包整理..."):
-                zip_bytes = create_organized_zip(results_with_bytes)
-            st.session_state["zip_bytes"] = zip_bytes
-
         if "zip_bytes" in st.session_state:
             st.download_button(
-                label="下载 ZIP",
+                label="下载整理后的照片",
                 data=st.session_state["zip_bytes"],
-                file_name="Birdie_鸟类照片整理.zip",
+                file_name="BirdEye_影禽_鸟类照片整理.zip",
                 mime="application/zip",
                 use_container_width=True,
             )
-
-    # 导出 JSON
-    with st.expander("导出识别结果 (JSON)"):
-        results_json = json.dumps(results, ensure_ascii=False, indent=2)
-        st.code(results_json, language="json")
-        st.download_button(
-            label="下载 JSON",
-            data=results_json,
-            file_name="bird_identification_results.json",
-            mime="application/json",
-        )
 
 # ============================================================
 # 页脚
 # ============================================================
 st.markdown(
     '<div class="app-footer">'
-    'Birdie · Powered by 通义千问 · '
+    '影禽 BirdEye · Powered by 通义千问 · '
     'Made with ❤️'
     '</div>',
     unsafe_allow_html=True,
