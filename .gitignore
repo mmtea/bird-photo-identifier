@@ -1,0 +1,5 @@
+__pycache__/
+*.pyc
+.env
+*.zip
+bird_identification_results.json
