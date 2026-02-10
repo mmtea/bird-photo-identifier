@@ -439,25 +439,17 @@ def reverse_geocode(latitude: float, longitude: float) -> str:
 
 
 def identify_bird(image_base64: str, api_key: str, exif_info: dict) -> dict:
-    """使用通义千问多模态模型识别鸟类、评分、判断地点"""
+    """使用通义千问多模态模型识别鸟类并进行专业摄影评分"""
     client = OpenAI(
         api_key=api_key,
         base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
     )
 
-    # 构建地理位置和时间的辅助信息
-    context_hints = []
-    geocoded_name = exif_info.get("geocoded_location", "")
-    if exif_info.get("gps_lat") and exif_info.get("gps_lon"):
-        gps_text = f"GPS 坐标：纬度 {exif_info['gps_lat']:.6f}，经度 {exif_info['gps_lon']:.6f}"
-        if geocoded_name:
-            gps_text += f"，解析地名：{geocoded_name}"
-        context_hints.append(gps_text)
-
+    # 构建季节辅助信息
+    context_block = ""
     if exif_info.get("shoot_time"):
         raw_time = exif_info["shoot_time"]
         month_str = raw_time[4:6] if len(raw_time) >= 6 else ""
-        season = ""
         if month_str:
             month = int(month_str)
             if month in (3, 4, 5):
@@ -468,21 +460,11 @@ def identify_bird(image_base64: str, api_key: str, exif_info: dict) -> dict:
                 season = "秋季（秋迁期）"
             else:
                 season = "冬季（越冬期）"
-        date_text = f"拍摄时间：{raw_time}"
-        if season:
-            date_text += f"，季节：{season}"
-        context_hints.append(date_text)
+            context_block = f"\n\n【辅助信息】拍摄时间：{raw_time}，季节：{season}"
 
-    context_block = ""
-    if context_hints:
-        context_block = (
-            "\n\n【重要辅助信息 - 请结合以下信息缩小鸟种范围】\n"
-            + "\n".join(context_hints)
-            + "\n请根据该地区在该季节可能出现的鸟种来辅助判断。"
-            "例如：某些鸟是候鸟，只在特定季节出现在特定地区；"
-            "某些鸟是留鸟，全年可见但分布有地域限制。"
-            "请优先考虑该地区该季节的常见鸟种和已记录鸟种。"
-        )
+    if exif_info.get("gps_lat") and exif_info.get("gps_lon"):
+        context_block += f"\nGPS 坐标：纬度 {exif_info['gps_lat']:.4f}，经度 {exif_info['gps_lon']:.4f}"
+        context_block += "\n请结合该地区该季节的鸟种分布辅助判断。"
 
     response = client.chat.completions.create(
         model="qwen-vl-max",
@@ -490,9 +472,10 @@ def identify_bird(image_base64: str, api_key: str, exif_info: dict) -> dict:
             {
                 "role": "system",
                 "content": (
-                    "你是一位专业的鸟类学家和观鸟专家，拥有丰富的中国鸟类野外辨识经验。"
-                    "你熟悉中国各地区各季节的鸟类分布，能够根据鸟的外形特征、"
-                    "栖息环境、地理位置和季节来精确识别鸟种。"
+                    "你是一位专业的鸟类学家和鸟类摄影评审专家。"
+                    "你不仅能精确识别鸟种，还精通鸟类摄影的评判标准。"
+                    "你见过大量国际鸟类摄影大赛的获奖作品，对优秀鸟类摄影有极高的审美标准。"
+                    "你的评分非常严格，只有真正出色的照片才能获得高分。"
                 ),
             },
             {
@@ -507,27 +490,56 @@ def identify_bird(image_base64: str, api_key: str, exif_info: dict) -> dict:
                     {
                         "type": "text",
                         "text": (
-                            "请作为专业鸟类学家，完成以下任务：\n\n"
+                            "请完成以下两个任务：\n\n"
                             "## 任务一：鸟种识别\n"
-                            "请仔细观察照片中鸟的以下特征来精确识别鸟种：\n"
-                            "- 体型大小（与常见鸟类对比）\n"
-                            "- 喙的形状、长度和颜色\n"
-                            "- 羽毛颜色和花纹（头部、背部、腹部、翅膀、尾羽）\n"
-                            "- 眼睛颜色和眼圈特征\n"
-                            "- 腿和脚的颜色\n"
-                            "- 飞行姿态（如果是飞行照片）\n"
-                            "- 栖息环境（水边、树林、草地、城市等）\n"
-                            "结合拍摄地点和季节，判断该地区该时间最可能出现的鸟种。\n\n"
-                            "## 任务二：摄影评分（满分100分）\n"
-                            "- 清晰度与对焦（0-20分）\n"
-                            "- 构图与美感（0-20分）\n"
-                            "- 光线与曝光（0-15分）\n"
-                            "- 背景与环境（0-15分）\n"
-                            "- 鸟的姿态与行为（0-15分）\n"
-                            "- 稀有度与难度（0-15分）\n\n"
-                            "## 任务三：拍摄地点\n"
-                            "根据照片环境和GPS信息判断拍摄地点。\n\n"
-                            "只需要返回一个 JSON 对象，不要返回其他内容：\n"
+                            "观察鸟的体型、喙、羽毛花纹、眼圈、腿脚颜色等特征，精确识别鸟种。\n\n"
+                            "## 任务二：专业摄影评分\n"
+                            "以国际鸟类摄影大赛的标准严格评分，6个维度各自独立打分：\n\n"
+                            "**1. 主体清晰度（0-20分）**\n"
+                            "- 18-20：鸟眼锐利合焦，羽毛纤毫毕现，可见羽小枝细节\n"
+                            "- 14-17：整体清晰，眼部合焦，但羽毛细节略有不足\n"
+                            "- 10-13：基本清晰但有轻微跑焦或运动模糊\n"
+                            "- 5-9：明显模糊，主体不够锐利\n"
+                            "- 0-4：严重失焦，主体模糊不清\n\n"
+                            "**2. 构图与美感（0-20分）**\n"
+                            "- 18-20：构图精妙，主体位置完美，留白恰当，有强烈视觉冲击力\n"
+                            "- 14-17：构图合理，主体突出，画面平衡\n"
+                            "- 10-13：构图一般，主体居中或略偏，无明显美感\n"
+                            "- 5-9：构图较差，主体过小/过偏/被裁切\n"
+                            "- 0-4：构图混乱，主体难以辨认\n\n"
+                            "**3. 光线与色彩（0-20分）**\n"
+                            "- 18-20：光线完美（如黄金时段侧光/逆光轮廓光），色彩饱满自然\n"
+                            "- 14-17：光线良好，曝光准确，色彩自然\n"
+                            "- 10-13：光线平淡（如正午顶光/阴天），色彩一般\n"
+                            "- 5-9：光线较差，过曝/欠曝，色彩失真\n"
+                            "- 0-4：严重曝光问题，画面灰暗或过亮\n\n"
+                            "**4. 背景与环境（0-15分）**\n"
+                            "- 13-15：背景干净柔美（奶油般虚化/纯色），完美衬托主体\n"
+                            "- 10-12：背景较好，虚化合理，无明显干扰\n"
+                            "- 7-9：背景一般，有轻微杂乱元素\n"
+                            "- 4-6：背景杂乱，干扰主体\n"
+                            "- 0-3：背景极差，严重影响观感\n\n"
+                            "**5. 姿态与瞬间（0-15分）**\n"
+                            "- 13-15：捕捉到精彩瞬间（展翅、捕食、求偶、育雏等行为）\n"
+                            "- 10-12：姿态优美自然，眼神有神\n"
+                            "- 7-9：姿态普通，静立或常见动作\n"
+                            "- 4-6：姿态不佳（背对、缩头、遮挡）\n"
+                            "- 0-3：几乎看不到完整姿态\n\n"
+                            "**6. 艺术性与故事感（0-10分）**\n"
+                            "- 9-10：照片有强烈的情感共鸣或叙事性，堪称艺术品\n"
+                            "- 7-8：有一定意境或氛围感\n"
+                            "- 5-6：记录性照片，缺乏艺术表达\n"
+                            "- 3-4：平淡无奇的记录\n"
+                            "- 0-2：无任何艺术价值\n\n"
+                            "**评分原则：严格按标准打分，拉开差距！**\n"
+                            "- 90+分：大赛获奖级别，极为罕见\n"
+                            "- 80-89：专业水准，各方面优秀\n"
+                            "- 70-79：良好，有明显亮点但也有不足\n"
+                            "- 60-69：中等，基本合格的鸟类照片\n"
+                            "- 50-59：较差，有明显缺陷\n"
+                            "- 50以下：质量很差\n"
+                            "大多数普通照片应在 55-75 分之间，不要轻易给高分！\n\n"
+                            "只返回一个 JSON 对象，不要返回其他内容：\n"
                             "{\n"
                             '  "chinese_name": "中文种名",\n'
                             '  "english_name": "英文种名",\n'
@@ -536,17 +548,21 @@ def identify_bird(image_base64: str, api_key: str, exif_info: dict) -> dict:
                             '  "family_chinese": "科的中文名",\n'
                             '  "family_english": "科的英文名",\n'
                             '  "confidence": "high/medium/low",\n'
-                            '  "identification_basis": "识别依据（30字以内）",\n'
-                            '  "score": 85,\n'
-                            '  "score_detail": "评分理由（30字以内）",\n'
-                            '  "location": "拍摄地点"\n'
+                            '  "identification_basis": "识别依据（20字以内）",\n'
+                            '  "score": 72,\n'
+                            '  "score_sharpness": 15,\n'
+                            '  "score_composition": 14,\n'
+                            '  "score_lighting": 13,\n'
+                            '  "score_background": 10,\n'
+                            '  "score_pose": 12,\n'
+                            '  "score_artistry": 8,\n'
+                            '  "score_comment": "一句话点评照片的最大亮点和最大不足（30字以内）"\n'
                             "}\n\n"
                             "要求：\n"
-                            "1. 必须精确到具体鸟种\n"
-                            "2. 目和科必须使用正确的鸟类分类学名称\n"
-                            "3. 如果无法识别，chinese_name 填 \"未知鸟类\"\n"
-                            "4. score 必须是 0-100 的整数，严格按标准打分\n"
-                            "5. location 尽量精确；无法判断填 \"未知地点\""
+                            "1. 必须精确到具体鸟种，目和科使用正确分类学名称\n"
+                            "2. 如果无法识别，chinese_name 填 \"未知鸟类\"\n"
+                            "3. score 必须等于6个分项之和，严格按标准打分\n"
+                            "4. 每个分项必须独立评判，不要所有分项都给相近的分数"
                             f"{context_block}"
                         ),
                     },
@@ -559,8 +575,18 @@ def identify_bird(image_base64: str, api_key: str, exif_info: dict) -> dict:
     json_match = re.search(r'\{[^{}]*\}', result_text, re.DOTALL)
     if json_match:
         parsed = json.loads(json_match.group())
-        raw_score = parsed.get("score", 0)
-        parsed["score"] = max(0, min(100, int(raw_score)))
+        # 确保分项分数在合理范围内
+        dimension_keys = [
+            ("score_sharpness", 20), ("score_composition", 20),
+            ("score_lighting", 20), ("score_background", 15),
+            ("score_pose", 15), ("score_artistry", 10),
+        ]
+        total = 0
+        for key, max_val in dimension_keys:
+            val = max(0, min(max_val, int(parsed.get(key, 0))))
+            parsed[key] = val
+            total += val
+        parsed["score"] = total
         return parsed
 
     return {
@@ -568,7 +594,10 @@ def identify_bird(image_base64: str, api_key: str, exif_info: dict) -> dict:
         "order_chinese": "未知目", "order_english": "Unknown",
         "family_chinese": "未知科", "family_english": "Unknown",
         "confidence": "low", "score": 0,
-        "score_detail": "识别失败", "location": "未知地点",
+        "score_sharpness": 0, "score_composition": 0,
+        "score_lighting": 0, "score_background": 0,
+        "score_pose": 0, "score_artistry": 0,
+        "score_comment": "识别失败",
         "identification_basis": "",
     }
 
@@ -607,9 +636,6 @@ def get_confidence_emoji(confidence: str) -> str:
 def build_filename(result: dict) -> str:
     """根据识别结果构建文件名"""
     parts = [sanitize_filename(result.get("chinese_name", "未知鸟类"))]
-    location = result.get("location", "")
-    if location and location != "未知地点":
-        parts.append(sanitize_filename(location))
     shoot_date = result.get("shoot_date", "")
     if shoot_date:
         parts.append(shoot_date)
@@ -751,26 +777,9 @@ if uploaded_files and api_key:
             # 提取 EXIF
             exif_info = extract_exif_info(image_bytes)
 
-            # 逆地理编码
-            geocoded_location = ""
-            if exif_info.get("gps_lat") and exif_info.get("gps_lon"):
-                geocoded_location = reverse_geocode(exif_info["gps_lat"], exif_info["gps_lon"])
-                if geocoded_location:
-                    exif_info["geocoded_location"] = geocoded_location
-
             # AI 识别
             image_base64 = encode_image_to_base64(image_bytes)
             result = identify_bird(image_base64, api_key, exif_info)
-
-            # 地点优先级：GPS逆地理编码 > AI识别
-            ai_location = result.get("location", "未知地点")
-            if geocoded_location:
-                result["location"] = geocoded_location
-                result["location_source"] = "GPS逆地理编码"
-            elif ai_location and ai_location != "未知地点":
-                result["location_source"] = "AI识别"
-            else:
-                result["location_source"] = "无法判断"
 
             # 拍摄日期
             shoot_date = ""
@@ -906,16 +915,6 @@ if "results_with_bytes" in st.session_state:
                     unsafe_allow_html=True,
                 )
 
-            location = result.get("location", "未知地点")
-            source = result.get("location_source", "")
-            source_text = f' <span style="font-size:11px; color:#aeaeb2;">({source})</span>' if source else ""
-            st.markdown(
-                f'<div class="info-row">'
-                f'<span class="label">拍摄地点</span>'
-                f'<span class="value">{location}{source_text}</span></div>',
-                unsafe_allow_html=True,
-            )
-
             shoot_date = result.get("shoot_date", "")
             if shoot_date and len(shoot_date) >= 8:
                 formatted_date = f"{shoot_date[:4]}.{shoot_date[4:6]}.{shoot_date[6:8]}"
@@ -926,11 +925,46 @@ if "results_with_bytes" in st.session_state:
                     unsafe_allow_html=True,
                 )
 
-            # 评分理由
-            score_detail = result.get("score_detail", "")
-            if score_detail:
+            # 分项评分条形图
+            dimensions = [
+                ("清晰度", result.get("score_sharpness", 0), 20),
+                ("构图", result.get("score_composition", 0), 20),
+                ("光线", result.get("score_lighting", 0), 20),
+                ("背景", result.get("score_background", 0), 15),
+                ("姿态", result.get("score_pose", 0), 15),
+                ("艺术性", result.get("score_artistry", 0), 10),
+            ]
+            bars_html = ""
+            for dim_name, dim_score, dim_max in dimensions:
+                percentage = (dim_score / dim_max * 100) if dim_max > 0 else 0
+                if percentage >= 85:
+                    bar_color = "#34c759"
+                elif percentage >= 70:
+                    bar_color = "#007aff"
+                elif percentage >= 50:
+                    bar_color = "#ff9500"
+                else:
+                    bar_color = "#ff3b30"
+                bars_html += (
+                    f'<div style="display:flex; align-items:center; margin:3px 0; font-size:13px;">'
+                    f'<span style="width:50px; color:#86868b; font-weight:500; flex-shrink:0;">{dim_name}</span>'
+                    f'<div style="flex:1; height:8px; background:rgba(0,0,0,0.06); border-radius:4px; margin:0 8px; overflow:hidden;">'
+                    f'<div style="width:{percentage}%; height:100%; background:{bar_color}; border-radius:4px; '
+                    f'transition: width 0.6s ease;"></div></div>'
+                    f'<span style="width:40px; text-align:right; color:#1d1d1f; font-weight:600;">{dim_score}/{dim_max}</span>'
+                    f'</div>'
+                )
+            st.markdown(
+                f'<div style="background:rgba(0,0,0,0.02); border-radius:12px; padding:12px 14px; margin-top:8px;">'
+                f'{bars_html}</div>',
+                unsafe_allow_html=True,
+            )
+
+            # 点评
+            score_comment = result.get("score_comment", "")
+            if score_comment:
                 st.markdown(
-                    f'<div class="score-detail">{score_detail}</div>',
+                    f'<div class="score-detail">💬 {score_comment}</div>',
                     unsafe_allow_html=True,
                 )
 
@@ -950,7 +984,7 @@ if "results_with_bytes" in st.session_state:
     st.markdown('<p class="section-title">下载整理</p>', unsafe_allow_html=True)
     st.markdown(
         '<p class="section-subtitle">'
-        '照片已按 目 / 科 层级分文件夹整理，并重命名为 鸟名_地点_时间_评分 格式'
+        '照片已按 目 / 科 层级分文件夹整理，并重命名为 鸟名_时间_评分 格式'
         '</p>',
         unsafe_allow_html=True,
     )
