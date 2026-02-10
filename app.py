@@ -672,36 +672,26 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ============================================================
-# API Key 输入（内嵌在页面中）
+# API Key（从 Streamlit Secrets 或环境变量读取，用户无需输入）
 # ============================================================
-api_key = os.environ.get("DASHSCOPE_API_KEY", "")
+MAX_PHOTOS_PER_SESSION = 10
+
+api_key = ""
+try:
+    api_key = st.secrets["DASHSCOPE_API_KEY"]
+except (KeyError, FileNotFoundError):
+    api_key = os.environ.get("DASHSCOPE_API_KEY", "")
 
 if not api_key:
-    with st.container():
-        key_col_left, key_col_center, key_col_right = st.columns([1, 2, 1])
-        with key_col_center:
-            st.markdown(
-                '<div class="glass-card" style="text-align:center;">'
-                '<p style="font-size:15px; color:#86868b; margin-bottom:12px;">'
-                '输入你的 DashScope API Key 开始使用</p></div>',
-                unsafe_allow_html=True,
-            )
-            api_key = st.text_input(
-                "API Key",
-                type="password",
-                placeholder="sk-xxxxxxxxxxxxxxxx",
-                label_visibility="collapsed",
-            )
-            st.caption(
-                "前往 [dashscope.console.aliyun.com](https://dashscope.console.aliyun.com/apiKey) 免费获取"
-            )
+    st.error("服务暂不可用，请联系管理员配置 API Key。")
+    st.stop()
 
 # ============================================================
 # 上传区域
 # ============================================================
 st.markdown('<p class="section-title">上传照片</p>', unsafe_allow_html=True)
 st.markdown(
-    '<p class="section-subtitle">支持 JPG、PNG、HEIC、TIFF、BMP、WebP 格式，可批量上传</p>',
+    f'<p class="section-subtitle">支持 JPG、PNG、HEIC、TIFF、BMP、WebP 格式，每次最多 {MAX_PHOTOS_PER_SESSION} 张</p>',
     unsafe_allow_html=True,
 )
 
@@ -713,6 +703,10 @@ uploaded_files = st.file_uploader(
 )
 
 if uploaded_files:
+    if len(uploaded_files) > MAX_PHOTOS_PER_SESSION:
+        st.warning(f"每次最多识别 {MAX_PHOTOS_PER_SESSION} 张照片，已自动截取前 {MAX_PHOTOS_PER_SESSION} 张。")
+        uploaded_files = uploaded_files[:MAX_PHOTOS_PER_SESSION]
+
     st.markdown(
         f'<p style="font-size:15px; color:#86868b; margin:8px 0 16px;">已选择 <b style="color:#1d1d1f;">'
         f'{len(uploaded_files)}</b> 张照片</p>',
@@ -790,8 +784,6 @@ if uploaded_files and api_key:
         # 保存到 session_state
         st.session_state["results_with_bytes"] = results_with_bytes
 
-elif uploaded_files and not api_key:
-    st.warning("请先在上方输入 DashScope API Key")
 
 # ============================================================
 # 展示结果
