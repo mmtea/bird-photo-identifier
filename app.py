@@ -47,21 +47,35 @@ st.markdown("""
     #MainMenu, footer, header { visibility: hidden; }
     .stDeployButton { display: none; }
 
-    /* 主标题区域 - 带背景图 */
+    /* 主标题区域 - 左文字右猛禽 */
     .hero-section {
-        text-align: center;
-        padding: 4rem 1rem 3rem;
+        text-align: left;
+        padding: 4rem 3rem 3rem;
         position: relative;
         overflow: hidden;
         border-radius: 0 0 32px 32px;
-        background:
-            linear-gradient(180deg, rgba(245,245,247,0.85) 0%, rgba(255,255,255,0.92) 100%),
-            url('https://images.unsplash.com/photo-1444464666168-49d633b86797?w=1920&q=80') center/cover no-repeat;
+        background: linear-gradient(135deg, #f5f5f7 0%, #e8e8ed 50%, rgba(200,200,210,0.6) 100%);
         margin-bottom: 8px;
+        min-height: 240px;
+    }
+    .hero-section::after {
+        content: '';
+        position: absolute;
+        right: -20px;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 420px;
+        height: 420px;
+        background: url('https://images.unsplash.com/photo-1611689342806-0f0e9395e0e1?w=800&q=80') center/cover no-repeat;
+        border-radius: 50%;
+        opacity: 0.35;
+        mask-image: radial-gradient(circle, black 40%, transparent 75%);
+        -webkit-mask-image: radial-gradient(circle, black 40%, transparent 75%);
+        pointer-events: none;
     }
     .hero-icon {
-        font-size: 96px;
-        margin-bottom: 12px;
+        font-size: 80px;
+        margin-bottom: 8px;
         display: block;
         filter: drop-shadow(0 4px 12px rgba(0,0,0,0.15));
     }
@@ -72,6 +86,8 @@ st.markdown("""
         color: #1d1d1f;
         margin: 0;
         line-height: 1.1;
+        position: relative;
+        z-index: 1;
     }
     .hero-subtitle {
         font-size: 20px;
@@ -79,6 +95,8 @@ st.markdown("""
         color: #6e6e73;
         margin-top: 12px;
         letter-spacing: -0.01em;
+        position: relative;
+        z-index: 1;
     }
 
     /* 毛玻璃卡片 */
@@ -746,21 +764,9 @@ if uploaded_files:
 
     st.markdown(
         f'<p style="font-size:15px; color:#86868b; margin:8px 0 16px;">已选择 <b style="color:#1d1d1f;">'
-        f'{len(uploaded_files)}</b> 张照片</p>',
+        f'{len(uploaded_files)}</b> 张照片，上传完成后将自动开始识别</p>',
         unsafe_allow_html=True,
     )
-
-    # 预览上传的照片 - 一行4个网格布局
-    for row_start in range(0, len(uploaded_files), 4):
-        row_files = uploaded_files[row_start:row_start + 4]
-        preview_cols = st.columns(4)
-        for col_idx, uploaded_file in enumerate(row_files):
-            with preview_cols[col_idx]:
-                try:
-                    img = Image.open(io.BytesIO(uploaded_file.getvalue()))
-                    st.image(img, use_container_width=True, caption=uploaded_file.name[:20])
-                except Exception:
-                    st.text(uploaded_file.name)
 
 # ============================================================
 # 上传后自动识别
