@@ -20,49 +20,326 @@ from openai import OpenAI
 # 页面配置
 # ============================================================
 st.set_page_config(
-    page_title="🐦 鸟类照片智能识别",
-    page_icon="🐦",
+    page_title="Birdie · 鸟类智能识别",
+    page_icon="🪶",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="collapsed",
 )
 
 # ============================================================
-# 自定义样式
+# Apple 风格样式
 # ============================================================
 st.markdown("""
 <style>
-    .main-header {
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+    /* 全局字体和背景 */
+    html, body, [class*="css"] {
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Display',
+                     'SF Pro Text', 'Helvetica Neue', Arial, sans-serif;
+        -webkit-font-smoothing: antialiased;
+    }
+    .stApp {
+        background: linear-gradient(180deg, #f5f5f7 0%, #ffffff 100%);
+    }
+
+    /* 隐藏 Streamlit 默认元素 */
+    #MainMenu, footer, header { visibility: hidden; }
+    .stDeployButton { display: none; }
+
+    /* 主标题区域 */
+    .hero-section {
         text-align: center;
-        padding: 1rem 0;
+        padding: 3rem 1rem 2rem;
     }
-    .score-badge {
-        display: inline-block;
-        padding: 4px 12px;
+    .hero-icon {
+        font-size: 64px;
+        margin-bottom: 8px;
+        display: block;
+    }
+    .hero-title {
+        font-size: 40px;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        color: #1d1d1f;
+        margin: 0;
+        line-height: 1.1;
+    }
+    .hero-subtitle {
+        font-size: 18px;
+        font-weight: 400;
+        color: #86868b;
+        margin-top: 8px;
+        letter-spacing: -0.01em;
+    }
+
+    /* 毛玻璃卡片 */
+    .glass-card {
+        background: rgba(255, 255, 255, 0.72);
+        backdrop-filter: blur(20px) saturate(180%);
+        -webkit-backdrop-filter: blur(20px) saturate(180%);
+        border: 1px solid rgba(0, 0, 0, 0.08);
         border-radius: 20px;
-        font-weight: bold;
+        padding: 24px;
+        margin-bottom: 20px;
+        transition: all 0.3s cubic-bezier(0.25, 0.1, 0.25, 1);
+    }
+    .glass-card:hover {
+        box-shadow: 0 8px 40px rgba(0, 0, 0, 0.08);
+        transform: translateY(-2px);
+    }
+
+    /* 统计卡片 */
+    .stat-card {
+        background: rgba(255, 255, 255, 0.8);
+        backdrop-filter: blur(20px);
+        border: 1px solid rgba(0, 0, 0, 0.06);
+        border-radius: 16px;
+        padding: 20px;
+        text-align: center;
+    }
+    .stat-value {
+        font-size: 32px;
+        font-weight: 700;
+        color: #1d1d1f;
+        letter-spacing: -0.02em;
+        line-height: 1.2;
+    }
+    .stat-label {
+        font-size: 13px;
+        font-weight: 500;
+        color: #86868b;
+        margin-top: 4px;
+        text-transform: uppercase;
+        letter-spacing: 0.02em;
+    }
+
+    /* 鸟类结果卡片 */
+    .bird-result-card {
+        background: rgba(255, 255, 255, 0.85);
+        backdrop-filter: blur(20px) saturate(180%);
+        border: 1px solid rgba(0, 0, 0, 0.06);
+        border-radius: 20px;
+        padding: 0;
+        margin-bottom: 24px;
+        overflow: hidden;
+        transition: all 0.3s cubic-bezier(0.25, 0.1, 0.25, 1);
+    }
+    .bird-result-card:hover {
+        box-shadow: 0 12px 48px rgba(0, 0, 0, 0.1);
+        transform: translateY(-3px);
+    }
+
+    /* 评分徽章 */
+    .score-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 16px;
+        border-radius: 100px;
+        font-weight: 600;
+        font-size: 15px;
+        letter-spacing: -0.01em;
+    }
+    .score-excellent {
+        background: linear-gradient(135deg, #34c759, #30d158);
         color: white;
-        font-size: 14px;
     }
-    .score-excellent { background-color: #10b981; }
-    .score-good { background-color: #3b82f6; }
-    .score-fair { background-color: #f59e0b; }
-    .score-poor { background-color: #ef4444; }
-    .bird-card {
-        border: 1px solid #e5e7eb;
-        border-radius: 12px;
-        padding: 16px;
-        margin-bottom: 16px;
-        background: white;
+    .score-good {
+        background: linear-gradient(135deg, #007aff, #0a84ff);
+        color: white;
     }
-    .taxonomy-tag {
-        display: inline-block;
-        padding: 2px 8px;
-        border-radius: 4px;
+    .score-fair {
+        background: linear-gradient(135deg, #ff9500, #ff9f0a);
+        color: white;
+    }
+    .score-poor {
+        background: linear-gradient(135deg, #ff3b30, #ff453a);
+        color: white;
+    }
+
+    /* 分类标签 */
+    .taxonomy-pill {
+        display: inline-flex;
+        align-items: center;
+        padding: 4px 12px;
+        border-radius: 100px;
         font-size: 12px;
-        margin-right: 4px;
+        font-weight: 500;
+        margin-right: 6px;
+        letter-spacing: -0.01em;
     }
-    .order-tag { background-color: #dbeafe; color: #1e40af; }
-    .family-tag { background-color: #dcfce7; color: #166534; }
+    .order-pill {
+        background: rgba(0, 122, 255, 0.1);
+        color: #007aff;
+    }
+    .family-pill {
+        background: rgba(52, 199, 89, 0.1);
+        color: #34c759;
+    }
+
+    /* 置信度指示器 */
+    .confidence-dot {
+        display: inline-block;
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        margin-right: 6px;
+    }
+    .confidence-high { background: #34c759; }
+    .confidence-medium { background: #ff9500; }
+    .confidence-low { background: #ff3b30; }
+
+    /* 信息行 */
+    .info-row {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 14px;
+        color: #6e6e73;
+        margin: 4px 0;
+        letter-spacing: -0.01em;
+    }
+    .info-row .label {
+        color: #86868b;
+        font-weight: 500;
+    }
+    .info-row .value {
+        color: #1d1d1f;
+    }
+
+    /* 鸟名标题 */
+    .bird-name {
+        font-size: 24px;
+        font-weight: 700;
+        color: #1d1d1f;
+        letter-spacing: -0.02em;
+        margin: 0 0 2px 0;
+        line-height: 1.2;
+    }
+    .bird-name-en {
+        font-size: 15px;
+        font-weight: 400;
+        color: #86868b;
+        margin: 0 0 12px 0;
+        letter-spacing: -0.01em;
+    }
+
+    /* 评分详情 */
+    .score-detail {
+        font-size: 14px;
+        color: #6e6e73;
+        font-style: italic;
+        margin-top: 8px;
+        padding: 8px 12px;
+        background: rgba(0, 0, 0, 0.03);
+        border-radius: 10px;
+    }
+
+    /* 上传区域 */
+    .stFileUploader > div {
+        border-radius: 16px !important;
+        border: 2px dashed rgba(0, 0, 0, 0.1) !important;
+        background: rgba(255, 255, 255, 0.6) !important;
+    }
+    .stFileUploader > div:hover {
+        border-color: #007aff !important;
+        background: rgba(0, 122, 255, 0.03) !important;
+    }
+
+    /* 按钮样式 */
+    .stButton > button {
+        border-radius: 14px !important;
+        font-weight: 600 !important;
+        letter-spacing: -0.01em !important;
+        padding: 12px 24px !important;
+        transition: all 0.2s ease !important;
+        border: none !important;
+    }
+    .stButton > button[kind="primary"] {
+        background: linear-gradient(135deg, #007aff, #0a84ff) !important;
+        color: white !important;
+    }
+    .stButton > button[kind="primary"]:hover {
+        box-shadow: 0 4px 16px rgba(0, 122, 255, 0.4) !important;
+        transform: translateY(-1px) !important;
+    }
+    .stButton > button[kind="secondary"] {
+        background: rgba(0, 0, 0, 0.05) !important;
+        color: #1d1d1f !important;
+    }
+
+    /* 下载按钮 */
+    .stDownloadButton > button {
+        border-radius: 14px !important;
+        font-weight: 600 !important;
+        background: linear-gradient(135deg, #34c759, #30d158) !important;
+        color: white !important;
+        border: none !important;
+        padding: 12px 24px !important;
+    }
+    .stDownloadButton > button:hover {
+        box-shadow: 0 4px 16px rgba(52, 199, 89, 0.4) !important;
+    }
+
+    /* 输入框 */
+    .stTextInput > div > div {
+        border-radius: 12px !important;
+        border: 1px solid rgba(0, 0, 0, 0.1) !important;
+    }
+
+    /* 进度条 */
+    .stProgress > div > div {
+        border-radius: 100px !important;
+        background: linear-gradient(90deg, #007aff, #5ac8fa) !important;
+    }
+
+    /* Expander */
+    .streamlit-expanderHeader {
+        border-radius: 12px !important;
+        font-weight: 600 !important;
+    }
+
+    /* 分割线 */
+    hr {
+        border: none;
+        height: 1px;
+        background: rgba(0, 0, 0, 0.06);
+        margin: 24px 0;
+    }
+
+    /* 图片圆角 */
+    .stImage img {
+        border-radius: 14px;
+    }
+
+    /* 页脚 */
+    .app-footer {
+        text-align: center;
+        padding: 32px 0 16px;
+        color: #86868b;
+        font-size: 13px;
+        letter-spacing: -0.01em;
+    }
+    .app-footer a {
+        color: #007aff;
+        text-decoration: none;
+    }
+
+    /* Section 标题 */
+    .section-title {
+        font-size: 28px;
+        font-weight: 700;
+        color: #1d1d1f;
+        letter-spacing: -0.02em;
+        margin: 32px 0 16px;
+    }
+    .section-subtitle {
+        font-size: 15px;
+        color: #86868b;
+        margin-top: -8px;
+        margin-bottom: 20px;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -384,86 +661,83 @@ def create_organized_zip(results_with_bytes: list) -> bytes:
 
 
 # ============================================================
-# 主界面
+# 主界面 - Hero Section
 # ============================================================
-st.markdown('<div class="main-header">', unsafe_allow_html=True)
-st.title("🐦 鸟类照片智能识别与分类整理")
-st.caption("上传鸟类照片，AI 自动识别鸟种、评分、按分类学整理")
-st.markdown('</div>', unsafe_allow_html=True)
+st.markdown("""
+<div class="hero-section">
+    <span class="hero-icon">🪶</span>
+    <h1 class="hero-title">Birdie</h1>
+    <p class="hero-subtitle">智能鸟类识别 · 摄影评分 · 分类整理</p>
+</div>
+""", unsafe_allow_html=True)
 
 # ============================================================
-# 侧边栏 - 设置
+# API Key 输入（内嵌在页面中）
 # ============================================================
-with st.sidebar:
-    st.header("⚙️ 设置")
+api_key = os.environ.get("DASHSCOPE_API_KEY", "")
 
-    api_key = st.text_input(
-        "DashScope API Key",
-        type="password",
-        placeholder="sk-xxxxxxxxxxxxxxxx",
-        help="前往 https://dashscope.console.aliyun.com/apiKey 获取",
-    )
-
-    if not api_key:
-        env_key = os.environ.get("DASHSCOPE_API_KEY", "")
-        if env_key:
-            api_key = env_key
-            st.success("✅ 已从环境变量读取 API Key")
-
-    st.divider()
-    st.header("📖 使用说明")
-    st.markdown("""
-    1. 在上方输入 **DashScope API Key**
-    2. 上传鸟类照片（支持批量）
-    3. 点击 **开始识别**
-    4. 查看识别结果和评分
-    5. 下载按「目/科」分类整理的照片
-    """)
-
-    st.divider()
-    st.markdown("""
-    ### 📊 评分标准
-    | 维度 | 分值 |
-    |------|------|
-    | 清晰度与对焦 | 20分 |
-    | 构图与美感 | 20分 |
-    | 光线与曝光 | 15分 |
-    | 背景与环境 | 15分 |
-    | 鸟的姿态行为 | 15分 |
-    | 稀有度与难度 | 15分 |
-    """)
+if not api_key:
+    with st.container():
+        key_col_left, key_col_center, key_col_right = st.columns([1, 2, 1])
+        with key_col_center:
+            st.markdown(
+                '<div class="glass-card" style="text-align:center;">'
+                '<p style="font-size:15px; color:#86868b; margin-bottom:12px;">'
+                '输入你的 DashScope API Key 开始使用</p></div>',
+                unsafe_allow_html=True,
+            )
+            api_key = st.text_input(
+                "API Key",
+                type="password",
+                placeholder="sk-xxxxxxxxxxxxxxxx",
+                label_visibility="collapsed",
+            )
+            st.caption(
+                "前往 [dashscope.console.aliyun.com](https://dashscope.console.aliyun.com/apiKey) 免费获取"
+            )
 
 # ============================================================
 # 上传区域
 # ============================================================
-st.header("📤 上传照片")
+st.markdown('<p class="section-title">上传照片</p>', unsafe_allow_html=True)
+st.markdown(
+    '<p class="section-subtitle">支持 JPG、PNG、HEIC、TIFF、BMP、WebP 格式，可批量上传</p>',
+    unsafe_allow_html=True,
+)
 
 uploaded_files = st.file_uploader(
-    "拖拽或点击上传鸟类照片（支持 JPG/PNG/HEIC/TIFF/BMP/WebP）",
+    "拖拽或点击上传鸟类照片",
     type=["jpg", "jpeg", "png", "tif", "tiff", "heic", "bmp", "webp"],
     accept_multiple_files=True,
+    label_visibility="collapsed",
 )
 
 if uploaded_files:
-    st.info(f"📷 已选择 **{len(uploaded_files)}** 张照片")
+    st.markdown(
+        f'<p style="font-size:15px; color:#86868b; margin:8px 0 16px;">已选择 <b style="color:#1d1d1f;">'
+        f'{len(uploaded_files)}</b> 张照片</p>',
+        unsafe_allow_html=True,
+    )
 
-    # 预览上传的照片
-    preview_cols = st.columns(min(len(uploaded_files), 6))
-    for idx, uploaded_file in enumerate(uploaded_files[:6]):
-        with preview_cols[idx % 6]:
+    # 预览上传的照片 - 网格布局
+    num_preview = min(len(uploaded_files), 8)
+    preview_cols = st.columns(min(num_preview, 4))
+    for idx in range(num_preview):
+        with preview_cols[idx % 4]:
             try:
-                img = Image.open(io.BytesIO(uploaded_file.getvalue()))
-                st.image(img, caption=uploaded_file.name, use_container_width=True)
+                img = Image.open(io.BytesIO(uploaded_files[idx].getvalue()))
+                st.image(img, use_container_width=True)
             except Exception:
-                st.text(uploaded_file.name)
-    if len(uploaded_files) > 6:
-        st.caption(f"... 还有 {len(uploaded_files) - 6} 张照片")
+                st.text(uploaded_files[idx].name)
+    if len(uploaded_files) > 8:
+        st.caption(f"还有 {len(uploaded_files) - 8} 张照片未展示")
 
 # ============================================================
 # 识别按钮
 # ============================================================
 if uploaded_files and api_key:
-    if st.button("🚀 开始识别", type="primary", use_container_width=True):
+    st.markdown("<br>", unsafe_allow_html=True)
+    if st.button("开始识别", type="primary", use_container_width=True):
         results_with_bytes = []
         progress_bar = st.progress(0, text="准备中...")
 
@@ -517,7 +791,7 @@ if uploaded_files and api_key:
         st.session_state["results_with_bytes"] = results_with_bytes
 
 elif uploaded_files and not api_key:
-    st.warning("⚠️ 请先在左侧边栏输入 DashScope API Key")
+    st.warning("请先在上方输入 DashScope API Key")
 
 # ============================================================
 # 展示结果
@@ -526,62 +800,59 @@ if "results_with_bytes" in st.session_state:
     results_with_bytes = st.session_state["results_with_bytes"]
     results = [item["result"] for item in results_with_bytes]
 
-    st.divider()
-    st.header("📊 识别结果")
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.markdown('<p class="section-title">识别结果</p>', unsafe_allow_html=True)
 
-    # 汇总统计
+    # 汇总统计 - Apple 风格卡片
     scores = [r["score"] for r in results if r.get("score")]
     if scores:
-        stat_cols = st.columns(4)
-        with stat_cols[0]:
-            st.metric("📷 照片总数", len(results))
-        with stat_cols[1]:
-            species = set(r["chinese_name"] for r in results)
-            st.metric("🐦 识别鸟种", f"{len(species)} 种")
-        with stat_cols[2]:
-            avg_score = sum(scores) / len(scores)
-            st.metric("📊 平均评分", f"{avg_score:.1f}")
-        with stat_cols[3]:
-            best = max(scores)
-            st.metric("🌟 最高评分", f"{best}")
+        species_set = set(r["chinese_name"] for r in results)
+        avg_score = sum(scores) / len(scores)
+        best_score = max(scores)
 
-    # 评分分布
-    if scores:
-        with st.expander("📈 评分分布", expanded=False):
-            excellent = sum(1 for s in scores if s >= 90)
-            good = sum(1 for s in scores if 75 <= s < 90)
-            fair = sum(1 for s in scores if 60 <= s < 75)
-            poor = sum(1 for s in scores if s < 60)
+        stat_cols = st.columns(4, gap="medium")
+        stat_data = [
+            (str(len(results)), "照片"),
+            (f"{len(species_set)}", "鸟种"),
+            (f"{avg_score:.1f}", "平均分"),
+            (f"{best_score}", "最高分"),
+        ]
+        for col, (value, label) in zip(stat_cols, stat_data):
+            with col:
+                st.markdown(
+                    f'<div class="stat-card">'
+                    f'<div class="stat-value">{value}</div>'
+                    f'<div class="stat-label">{label}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
 
-            dist_cols = st.columns(4)
-            with dist_cols[0]:
-                st.metric("🌟 优秀 (≥90)", excellent)
-            with dist_cols[1]:
-                st.metric("⭐ 良好 (75-89)", good)
-            with dist_cols[2]:
-                st.metric("👍 一般 (60-74)", fair)
-            with dist_cols[3]:
-                st.metric("📷 待提升 (<60)", poor)
+    st.markdown("<br>", unsafe_allow_html=True)
 
     # 分类统计
     taxonomy = {}
     for result in results:
         order = result.get("order_chinese", "未知目")
         family = result.get("family_chinese", "未知科")
-        species = result["chinese_name"]
+        species_name = result["chinese_name"]
         taxonomy.setdefault(order, {}).setdefault(family, set())
-        taxonomy[order][family].add(species)
+        taxonomy[order][family].add(species_name)
 
-    with st.expander("🔬 分类学统计", expanded=False):
+    with st.expander("分类学概览"):
         for order, families in sorted(taxonomy.items()):
-            st.markdown(f"**📗 {order}**")
+            st.markdown(f"**{order}**")
             for family, species_set in sorted(families.items()):
-                species_list = ", ".join(sorted(species_set))
-                st.markdown(f"&nbsp;&nbsp;&nbsp;&nbsp;📘 {family}: {species_list}")
+                species_list = " · ".join(sorted(species_set))
+                st.markdown(
+                    f'&nbsp;&nbsp;&nbsp;&nbsp;'
+                    f'<span class="taxonomy-pill family-pill">{family}</span> '
+                    f'<span style="color:#6e6e73; font-size:14px;">{species_list}</span>',
+                    unsafe_allow_html=True,
+                )
 
-    st.divider()
+    st.markdown("<br>", unsafe_allow_html=True)
 
-    # 逐张展示
+    # 逐张展示 - Apple 风格卡片
     for idx, item in enumerate(results_with_bytes):
         result = item["result"]
         image_bytes = item["image_bytes"]
@@ -590,9 +861,8 @@ if "results_with_bytes" in st.session_state:
         score_color = get_score_color(score)
         score_emoji = get_score_emoji(score)
         confidence = result.get("confidence", "low")
-        confidence_emoji = get_confidence_emoji(confidence)
 
-        col_img, col_info = st.columns([1, 2])
+        col_img, col_spacer, col_info = st.columns([1, 0.1, 2])
 
         with col_img:
             try:
@@ -600,81 +870,111 @@ if "results_with_bytes" in st.session_state:
                 st.image(img, use_container_width=True)
             except Exception:
                 st.text("无法预览")
-            st.caption(f"📄 {result.get('original_name', '')}")
 
         with col_info:
-            # 鸟种名称和评分
-            name_col, score_col = st.columns([3, 1])
-            with name_col:
-                st.subheader(f"{result.get('chinese_name', '未知')} ({result.get('english_name', '')})")
-            with score_col:
-                st.markdown(
-                    f'<span class="score-badge score-{score_color}">'
-                    f'{score_emoji} {score}/100</span>',
-                    unsafe_allow_html=True,
-                )
-
-            # 分类信息
+            # 鸟种名称
             st.markdown(
-                f'<span class="taxonomy-tag order-tag">{result.get("order_chinese", "")}</span>'
-                f'<span class="taxonomy-tag family-tag">{result.get("family_chinese", "")}</span>'
-                f'&nbsp;&nbsp;{confidence_emoji} 置信度: {confidence}',
+                f'<p class="bird-name">{result.get("chinese_name", "未知")}</p>'
+                f'<p class="bird-name-en">{result.get("english_name", "")}</p>',
                 unsafe_allow_html=True,
             )
 
-            # 详细信息
-            detail_cols = st.columns(3)
-            with detail_cols[0]:
-                basis = result.get("identification_basis", "")
-                if basis:
-                    st.markdown(f"🔎 **识别依据**: {basis}")
-            with detail_cols[1]:
-                location = result.get("location", "未知地点")
-                source = result.get("location_source", "")
-                st.markdown(f"📍 **地点**: {location}")
-                if source:
-                    st.caption(f"来源: {source}")
-            with detail_cols[2]:
-                shoot_date = result.get("shoot_date", "")
-                if shoot_date and len(shoot_date) >= 8:
-                    formatted_date = f"{shoot_date[:4]}-{shoot_date[4:6]}-{shoot_date[6:8]}"
-                    st.markdown(f"📅 **日期**: {formatted_date}")
+            # 分类标签 + 评分
+            confidence_class = f"confidence-{confidence}"
+            st.markdown(
+                f'<span class="taxonomy-pill order-pill">{result.get("order_chinese", "")}</span>'
+                f'<span class="taxonomy-pill family-pill">{result.get("family_chinese", "")}</span>'
+                f'&nbsp;&nbsp;'
+                f'<span class="score-pill score-{score_color}">{score_emoji} {score}</span>'
+                f'&nbsp;&nbsp;'
+                f'<span class="confidence-dot {confidence_class}"></span>'
+                f'<span style="font-size:13px; color:#86868b;">{confidence}</span>',
+                unsafe_allow_html=True,
+            )
+
+            st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+
+            # 信息行
+            basis = result.get("identification_basis", "")
+            if basis:
+                st.markdown(
+                    f'<div class="info-row">'
+                    f'<span class="label">识别依据</span>'
+                    f'<span class="value">{basis}</span></div>',
+                    unsafe_allow_html=True,
+                )
+
+            location = result.get("location", "未知地点")
+            source = result.get("location_source", "")
+            source_text = f' <span style="font-size:11px; color:#aeaeb2;">({source})</span>' if source else ""
+            st.markdown(
+                f'<div class="info-row">'
+                f'<span class="label">拍摄地点</span>'
+                f'<span class="value">{location}{source_text}</span></div>',
+                unsafe_allow_html=True,
+            )
+
+            shoot_date = result.get("shoot_date", "")
+            if shoot_date and len(shoot_date) >= 8:
+                formatted_date = f"{shoot_date[:4]}.{shoot_date[4:6]}.{shoot_date[6:8]}"
+                st.markdown(
+                    f'<div class="info-row">'
+                    f'<span class="label">拍摄日期</span>'
+                    f'<span class="value">{formatted_date}</span></div>',
+                    unsafe_allow_html=True,
+                )
 
             # 评分理由
             score_detail = result.get("score_detail", "")
             if score_detail:
-                st.markdown(f"💬 {score_detail}")
+                st.markdown(
+                    f'<div class="score-detail">{score_detail}</div>',
+                    unsafe_allow_html=True,
+                )
 
-            # 新文件名预览
+            # 新文件名
             new_name = build_filename(result) + item["suffix"]
-            st.caption(f"📝 重命名为: `{new_name}`")
+            st.markdown(
+                f'<p style="font-size:12px; color:#aeaeb2; margin-top:8px;">'
+                f'→ {new_name}</p>',
+                unsafe_allow_html=True,
+            )
 
-        st.divider()
+        st.markdown("<hr>", unsafe_allow_html=True)
 
     # ============================================================
-    # 下载按钮
+    # 下载区域
     # ============================================================
-    st.header("📥 下载整理后的照片")
-    st.markdown("照片将按 **目/科** 层级分文件夹整理，并重命名为 `鸟名_地点_时间_评分.jpg` 格式。")
+    st.markdown('<p class="section-title">下载整理</p>', unsafe_allow_html=True)
+    st.markdown(
+        '<p class="section-subtitle">'
+        '照片将按 目 / 科 层级分文件夹整理，并重命名为 鸟名_地点_时间_评分 格式'
+        '</p>',
+        unsafe_allow_html=True,
+    )
 
-    if st.button("📦 生成下载包", use_container_width=True):
-        with st.spinner("正在打包整理..."):
-            zip_bytes = create_organized_zip(results_with_bytes)
+    dl_col_left, dl_col_center, dl_col_right = st.columns([1, 2, 1])
+    with dl_col_center:
+        if st.button("生成下载包", use_container_width=True):
+            with st.spinner("正在打包整理..."):
+                zip_bytes = create_organized_zip(results_with_bytes)
+            st.session_state["zip_bytes"] = zip_bytes
 
-        st.download_button(
-            label="⬇️ 下载 ZIP 文件",
-            data=zip_bytes,
-            file_name="鸟类照片整理.zip",
-            mime="application/zip",
-            use_container_width=True,
-        )
+        if "zip_bytes" in st.session_state:
+            st.download_button(
+                label="下载 ZIP",
+                data=st.session_state["zip_bytes"],
+                file_name="Birdie_鸟类照片整理.zip",
+                mime="application/zip",
+                use_container_width=True,
+            )
 
-    # 导出 JSON 结果
-    with st.expander("📄 导出识别结果 (JSON)"):
+    # 导出 JSON
+    with st.expander("导出识别结果 (JSON)"):
         results_json = json.dumps(results, ensure_ascii=False, indent=2)
         st.code(results_json, language="json")
         st.download_button(
-            label="⬇️ 下载 JSON",
+            label="下载 JSON",
             data=results_json,
             file_name="bird_identification_results.json",
             mime="application/json",
@@ -683,11 +983,10 @@ if "results_with_bytes" in st.session_state:
 # ============================================================
 # 页脚
 # ============================================================
-st.divider()
 st.markdown(
-    '<div style="text-align:center; color:#9ca3af; font-size:13px;">'
-    '🐦 鸟类照片智能识别 | Powered by 通义千问 qwen-vl-max | '
-    'Made with ❤️ by Aone Copilot'
+    '<div class="app-footer">'
+    'Birdie · Powered by 通义千问 · '
+    'Made with ❤️'
     '</div>',
     unsafe_allow_html=True,
 )
