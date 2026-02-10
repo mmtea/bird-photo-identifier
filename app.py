@@ -47,29 +47,37 @@ st.markdown("""
     #MainMenu, footer, header { visibility: hidden; }
     .stDeployButton { display: none; }
 
-    /* 主标题区域 */
+    /* 主标题区域 - 带背景图 */
     .hero-section {
         text-align: center;
-        padding: 3rem 1rem 2rem;
+        padding: 4rem 1rem 3rem;
+        position: relative;
+        overflow: hidden;
+        border-radius: 0 0 32px 32px;
+        background:
+            linear-gradient(180deg, rgba(245,245,247,0.85) 0%, rgba(255,255,255,0.92) 100%),
+            url('https://images.unsplash.com/photo-1444464666168-49d633b86797?w=1920&q=80') center/cover no-repeat;
+        margin-bottom: 8px;
     }
     .hero-icon {
-        font-size: 64px;
-        margin-bottom: 8px;
+        font-size: 96px;
+        margin-bottom: 12px;
         display: block;
+        filter: drop-shadow(0 4px 12px rgba(0,0,0,0.15));
     }
     .hero-title {
-        font-size: 40px;
+        font-size: 56px;
         font-weight: 700;
-        letter-spacing: -0.02em;
+        letter-spacing: -0.03em;
         color: #1d1d1f;
         margin: 0;
         line-height: 1.1;
     }
     .hero-subtitle {
-        font-size: 18px;
+        font-size: 20px;
         font-weight: 400;
-        color: #86868b;
-        margin-top: 8px;
+        color: #6e6e73;
+        margin-top: 12px;
         letter-spacing: -0.01em;
     }
 
@@ -210,7 +218,7 @@ st.markdown("""
 
     /* 鸟名标题 */
     .bird-name {
-        font-size: 24px;
+        font-size: 18px;
         font-weight: 700;
         color: #1d1d1f;
         letter-spacing: -0.02em;
@@ -218,10 +226,10 @@ st.markdown("""
         line-height: 1.2;
     }
     .bird-name-en {
-        font-size: 15px;
+        font-size: 13px;
         font-weight: 400;
         color: #86868b;
-        margin: 0 0 12px 0;
+        margin: 0 0 8px 0;
         letter-spacing: -0.01em;
     }
 
@@ -548,7 +556,8 @@ def identify_bird(image_base64: str, api_key: str, exif_info: dict) -> dict:
                             '  "family_chinese": "科的中文名",\n'
                             '  "family_english": "科的英文名",\n'
                             '  "confidence": "high/medium/low",\n'
-                            '  "identification_basis": "识别依据（20字以内）",\n'
+                            '  "identification_basis": "识别依据（20字以内，说明通过哪些外观特征识别）",\n'
+                            '  "bird_description": "该鸟种的详细介绍（100-150字），包括：外形特点（体长、羽色、显著特征）、生活习性（食性、活动规律、叫声特点）、栖息生境（偏好的生态环境类型）、全球分布范围（繁殖地、越冬地、迁徙路线）、在中国的分布和常见程度",\n'
                             '  "score": 72,\n'
                             '  "score_sharpness": 15,\n'
                             '  "score_composition": 14,\n'
@@ -562,7 +571,8 @@ def identify_bird(image_base64: str, api_key: str, exif_info: dict) -> dict:
                             "1. 必须精确到具体鸟种，目和科使用正确分类学名称\n"
                             "2. 如果无法识别，chinese_name 填 \"未知鸟类\"\n"
                             "3. score 必须等于6个分项之和，严格按标准打分\n"
-                            "4. 每个分项必须独立评判，不要所有分项都给相近的分数"
+                            "4. 每个分项必须独立评判，不要所有分项都给相近的分数\n"
+                            "5. bird_description 必须是专业准确的鸟类学知识，内容丰富有趣"
                             f"{context_block}"
                         ),
                     },
@@ -599,6 +609,7 @@ def identify_bird(image_base64: str, api_key: str, exif_info: dict) -> dict:
         "score_pose": 0, "score_artistry": 0,
         "score_comment": "识别失败",
         "identification_basis": "",
+        "bird_description": "",
     }
 
 
@@ -722,7 +733,7 @@ st.markdown(
 )
 
 uploaded_files = st.file_uploader(
-    "拖拽或点击上传鸟类照片",
+    "拖拽照片到此处，或点击选择文件",
     type=["jpg", "jpeg", "png", "tif", "tiff", "heic", "bmp", "webp"],
     accept_multiple_files=True,
     label_visibility="collapsed",
@@ -739,18 +750,17 @@ if uploaded_files:
         unsafe_allow_html=True,
     )
 
-    # 预览上传的照片 - 网格布局
-    num_preview = min(len(uploaded_files), 8)
-    preview_cols = st.columns(min(num_preview, 4))
-    for idx in range(num_preview):
-        with preview_cols[idx % 4]:
-            try:
-                img = Image.open(io.BytesIO(uploaded_files[idx].getvalue()))
-                st.image(img, use_container_width=True)
-            except Exception:
-                st.text(uploaded_files[idx].name)
-    if len(uploaded_files) > 8:
-        st.caption(f"还有 {len(uploaded_files) - 8} 张照片未展示")
+    # 预览上传的照片 - 一行4个网格布局
+    for row_start in range(0, len(uploaded_files), 4):
+        row_files = uploaded_files[row_start:row_start + 4]
+        preview_cols = st.columns(4)
+        for col_idx, uploaded_file in enumerate(row_files):
+            with preview_cols[col_idx]:
+                try:
+                    img = Image.open(io.BytesIO(uploaded_file.getvalue()))
+                    st.image(img, use_container_width=True, caption=uploaded_file.name[:20])
+                except Exception:
+                    st.text(uploaded_file.name)
 
 # ============================================================
 # 上传后自动识别
@@ -863,118 +873,121 @@ if "results_with_bytes" in st.session_state:
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # 逐张展示 - Apple 风格卡片
-    for idx, item in enumerate(results_with_bytes):
-        result = item["result"]
-        image_bytes = item["image_bytes"]
+    # 逐张展示 - 一行4个卡片网格
+    for row_start in range(0, len(results_with_bytes), 4):
+        row_items = results_with_bytes[row_start:row_start + 4]
+        card_cols = st.columns(4)
 
-        score = result.get("score", 0)
-        score_color = get_score_color(score)
-        score_emoji = get_score_emoji(score)
-        confidence = result.get("confidence", "low")
+        for col_idx, item in enumerate(row_items):
+            result = item["result"]
+            image_bytes = item["image_bytes"]
 
-        col_img, col_spacer, col_info = st.columns([1, 0.1, 2])
+            score = result.get("score", 0)
+            score_color = get_score_color(score)
+            score_emoji = get_score_emoji(score)
+            confidence = result.get("confidence", "low")
 
-        with col_img:
-            try:
-                img = Image.open(io.BytesIO(image_bytes))
-                st.image(img, use_container_width=True)
-            except Exception:
-                st.text("无法预览")
+            with card_cols[col_idx]:
+                # 照片
+                try:
+                    img = Image.open(io.BytesIO(image_bytes))
+                    st.image(img, use_container_width=True)
+                except Exception:
+                    st.text("无法预览")
 
-        with col_info:
-            # 鸟种名称
-            st.markdown(
-                f'<p class="bird-name">{result.get("chinese_name", "未知")}</p>'
-                f'<p class="bird-name-en">{result.get("english_name", "")}</p>',
-                unsafe_allow_html=True,
-            )
-
-            # 分类标签 + 评分
-            confidence_class = f"confidence-{confidence}"
-            st.markdown(
-                f'<span class="taxonomy-pill order-pill">{result.get("order_chinese", "")}</span>'
-                f'<span class="taxonomy-pill family-pill">{result.get("family_chinese", "")}</span>'
-                f'&nbsp;&nbsp;'
-                f'<span class="score-pill score-{score_color}">{score_emoji} {score}</span>'
-                f'&nbsp;&nbsp;'
-                f'<span class="confidence-dot {confidence_class}"></span>'
-                f'<span style="font-size:13px; color:#86868b;">{confidence}</span>',
-                unsafe_allow_html=True,
-            )
-
-            st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-
-            # 信息行
-            basis = result.get("identification_basis", "")
-            if basis:
+                # 鸟种名称 + 评分
                 st.markdown(
-                    f'<div class="info-row">'
-                    f'<span class="label">识别依据</span>'
-                    f'<span class="value">{basis}</span></div>',
+                    f'<p class="bird-name">{result.get("chinese_name", "未知")}</p>'
+                    f'<p class="bird-name-en">{result.get("english_name", "")}</p>',
                     unsafe_allow_html=True,
                 )
 
-            shoot_date = result.get("shoot_date", "")
-            if shoot_date and len(shoot_date) >= 8:
-                formatted_date = f"{shoot_date[:4]}.{shoot_date[4:6]}.{shoot_date[6:8]}"
+                # 分类标签 + 评分徽章
+                confidence_class = f"confidence-{confidence}"
                 st.markdown(
-                    f'<div class="info-row">'
-                    f'<span class="label">拍摄日期</span>'
-                    f'<span class="value">{formatted_date}</span></div>',
+                    f'<span class="taxonomy-pill order-pill">{result.get("order_chinese", "")}</span>'
+                    f'<span class="taxonomy-pill family-pill">{result.get("family_chinese", "")}</span>'
+                    f'<br>'
+                    f'<span class="score-pill score-{score_color}" style="margin-top:6px;">'
+                    f'{score_emoji} {score}</span>'
+                    f'&nbsp;'
+                    f'<span class="confidence-dot {confidence_class}"></span>'
+                    f'<span style="font-size:12px; color:#86868b;">{confidence}</span>',
                     unsafe_allow_html=True,
                 )
 
-            # 分项评分条形图
-            dimensions = [
-                ("清晰度", result.get("score_sharpness", 0), 20),
-                ("构图", result.get("score_composition", 0), 20),
-                ("光线", result.get("score_lighting", 0), 20),
-                ("背景", result.get("score_background", 0), 15),
-                ("姿态", result.get("score_pose", 0), 15),
-                ("艺术性", result.get("score_artistry", 0), 10),
-            ]
-            bars_html = ""
-            for dim_name, dim_score, dim_max in dimensions:
-                percentage = (dim_score / dim_max * 100) if dim_max > 0 else 0
-                if percentage >= 85:
-                    bar_color = "#34c759"
-                elif percentage >= 70:
-                    bar_color = "#007aff"
-                elif percentage >= 50:
-                    bar_color = "#ff9500"
-                else:
-                    bar_color = "#ff3b30"
-                bars_html += (
-                    f'<div style="display:flex; align-items:center; margin:3px 0; font-size:13px;">'
-                    f'<span style="width:50px; color:#86868b; font-weight:500; flex-shrink:0;">{dim_name}</span>'
-                    f'<div style="flex:1; height:8px; background:rgba(0,0,0,0.06); border-radius:4px; margin:0 8px; overflow:hidden;">'
-                    f'<div style="width:{percentage}%; height:100%; background:{bar_color}; border-radius:4px; '
-                    f'transition: width 0.6s ease;"></div></div>'
-                    f'<span style="width:40px; text-align:right; color:#1d1d1f; font-weight:600;">{dim_score}/{dim_max}</span>'
-                    f'</div>'
-                )
-            st.markdown(
-                f'<div style="background:rgba(0,0,0,0.02); border-radius:12px; padding:12px 14px; margin-top:8px;">'
-                f'{bars_html}</div>',
-                unsafe_allow_html=True,
-            )
+                # 识别依据
+                basis = result.get("identification_basis", "")
+                if basis:
+                    st.markdown(
+                        f'<div style="font-size:12px; color:#6e6e73; margin-top:6px;">'
+                        f'<b style="color:#86868b;">识别依据</b> {basis}</div>',
+                        unsafe_allow_html=True,
+                    )
 
-            # 点评
-            score_comment = result.get("score_comment", "")
-            if score_comment:
+                # 鸟类介绍（折叠展示，避免卡片过长）
+                bird_desc = result.get("bird_description", "")
+                if bird_desc:
+                    with st.expander("🐦 鸟类介绍"):
+                        st.markdown(
+                            f'<div style="font-size:12px; color:#3a3a3c; line-height:1.7;">'
+                            f'{bird_desc}</div>',
+                            unsafe_allow_html=True,
+                        )
+
+                # 拍摄日期
+                shoot_date = result.get("shoot_date", "")
+                if shoot_date and len(shoot_date) >= 8:
+                    formatted_date = f"{shoot_date[:4]}.{shoot_date[4:6]}.{shoot_date[6:8]}"
+                    st.markdown(
+                        f'<div style="font-size:12px; color:#86868b; margin-top:4px;">'
+                        f'📅 {formatted_date}</div>',
+                        unsafe_allow_html=True,
+                    )
+
+                # 分项评分条形图（紧凑版）
+                dimensions = [
+                    ("清晰", result.get("score_sharpness", 0), 20),
+                    ("构图", result.get("score_composition", 0), 20),
+                    ("光线", result.get("score_lighting", 0), 20),
+                    ("背景", result.get("score_background", 0), 15),
+                    ("姿态", result.get("score_pose", 0), 15),
+                    ("艺术", result.get("score_artistry", 0), 10),
+                ]
+                bars_html = ""
+                for dim_name, dim_score, dim_max in dimensions:
+                    percentage = (dim_score / dim_max * 100) if dim_max > 0 else 0
+                    if percentage >= 85:
+                        bar_color = "#34c759"
+                    elif percentage >= 70:
+                        bar_color = "#007aff"
+                    elif percentage >= 50:
+                        bar_color = "#ff9500"
+                    else:
+                        bar_color = "#ff3b30"
+                    bars_html += (
+                        f'<div style="display:flex; align-items:center; margin:2px 0; font-size:11px;">'
+                        f'<span style="width:28px; color:#86868b; font-weight:500; flex-shrink:0;">{dim_name}</span>'
+                        f'<div style="flex:1; height:6px; background:rgba(0,0,0,0.06); border-radius:3px; margin:0 4px; overflow:hidden;">'
+                        f'<div style="width:{percentage}%; height:100%; background:{bar_color}; border-radius:3px;"></div></div>'
+                        f'<span style="width:32px; text-align:right; color:#1d1d1f; font-weight:600; font-size:11px;">{dim_score}/{dim_max}</span>'
+                        f'</div>'
+                    )
                 st.markdown(
-                    f'<div class="score-detail">💬 {score_comment}</div>',
+                    f'<div style="background:rgba(0,0,0,0.02); border-radius:10px; padding:8px 10px; margin-top:6px;">'
+                    f'{bars_html}</div>',
                     unsafe_allow_html=True,
                 )
 
-            # 新文件名
-            new_name = build_filename(result) + item["suffix"]
-            st.markdown(
-                f'<p style="font-size:12px; color:#aeaeb2; margin-top:8px;">'
-                f'→ {new_name}</p>',
-                unsafe_allow_html=True,
-            )
+                # 点评
+                score_comment = result.get("score_comment", "")
+                if score_comment:
+                    st.markdown(
+                        f'<div style="font-size:12px; color:#6e6e73; font-style:italic; '
+                        f'margin-top:6px; padding:6px 8px; background:rgba(0,0,0,0.03); '
+                        f'border-radius:8px;">💬 {score_comment}</div>',
+                        unsafe_allow_html=True,
+                    )
 
         st.markdown("<hr>", unsafe_allow_html=True)
 
