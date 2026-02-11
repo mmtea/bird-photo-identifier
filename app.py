@@ -1,4 +1,4 @@
-import streamlit as st
+i额mport streamlit as st
 import os
 import io
 import re
@@ -1159,6 +1159,22 @@ def fetch_user_stats_from_records(records: list) -> dict:
 
 
 @st.cache_data(ttl=60, show_spinner=False)
+def fetch_top_photos(limit: int = 10) -> list:
+    """查询全局评分最高的照片（缓存 60 秒）"""
+    try:
+        params = (
+            f"select=id,user_nickname,chinese_name,score,thumbnail_base64"
+            f"&order=score.desc"
+            f"&limit={limit}"
+            f"&score=gt.0"
+        )
+        result = _supabase_request("GET", "bird_records", params=params)
+        return result if isinstance(result, list) else []
+    except Exception:
+        return []
+
+
+@st.cache_data(ttl=60, show_spinner=False)
 def fetch_leaderboard(limit: int = 20) -> list:
     """查询所有用户的排行榜数据，按鸟种数降序排列（缓存 60 秒）"""
     try:
@@ -1330,6 +1346,85 @@ with hero_left:
     """, unsafe_allow_html=True)
 
 with hero_right:
+    # ---- 佳作榜：横向滚动展示评分最高的 top10 照片 ----
+    top_photos = fetch_top_photos()
+    if top_photos:
+        cards_html = ""
+        for rank, photo in enumerate(top_photos, 1):
+            thumb_b64 = photo.get("thumbnail_base64", "")
+            photo_nickname = photo.get("user_nickname", "匿名")
+            bird_name = photo.get("chinese_name", "未知")
+            photo_score = photo.get("score", 0)
+            score_color = get_score_color(photo_score)
+            score_emoji_str = get_score_emoji(photo_score)
+
+            if rank == 1:
+                rank_label = "🥇"
+            elif rank == 2:
+                rank_label = "🥈"
+            elif rank == 3:
+                rank_label = "🥉"
+            else:
+                rank_label = f"#{rank}"
+
+            if thumb_b64:
+                img_html = (
+                    f'<img src="data:image/jpeg;base64,{thumb_b64}" '
+                    f'style="width:100%;height:140px;object-fit:cover;border-radius:10px 10px 0 0;" '
+                    f'loading="lazy" alt="{bird_name}">'
+                )
+                full_img_html = (
+                    f'<img src="data:image/jpeg;base64,{thumb_b64}" '
+                    f'style="width:100%;border-radius:8px;object-fit:contain;" alt="{bird_name}">'
+                )
+            else:
+                img_html = (
+                    '<div style="width:100%;height:140px;background:rgba(0,0,0,0.04);'
+                    'border-radius:10px 10px 0 0;display:flex;align-items:center;'
+                    'justify-content:center;font-size:32px;">🐦</div>'
+                )
+                full_img_html = ""
+
+            if photo_score >= 80:
+                pill_color = "#34c759"
+            elif photo_score >= 60:
+                pill_color = "#007aff"
+            else:
+                pill_color = "#ff9500"
+
+            cards_html += (
+                f'<div style="min-width:160px;max-width:160px;background:#fff;'
+                f'border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,0.08);'
+                f'flex-shrink:0;overflow:hidden;">'
+                f'{img_html}'
+                f'<div style="padding:8px 10px;">'
+                f'<div style="display:flex;align-items:center;gap:4px;margin-bottom:4px;">'
+                f'<span style="font-size:14px;">{rank_label}</span>'
+                f'<span style="font-size:13px;font-weight:600;color:#1d1d1f;'
+                f'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{bird_name}</span>'
+                f'</div>'
+                f'<div style="display:flex;align-items:center;justify-content:space-between;">'
+                f'<span style="font-size:11px;color:#86868b;white-space:nowrap;'
+                f'overflow:hidden;text-overflow:ellipsis;max-width:70px;">👤 {photo_nickname}</span>'
+                f'<span style="font-size:11px;font-weight:600;color:{pill_color};'
+                f'background:rgba(0,0,0,0.04);padding:1px 6px;border-radius:8px;">'
+                f'{score_emoji_str} {photo_score}</span>'
+                f'</div>'
+                f'</div>'
+                f'</div>'
+            )
+
+        st.markdown(
+            f'<div style="margin-bottom:12px;">'
+            f'<p style="font-size:15px;font-weight:700;color:#1d1d1f;margin:0 0 8px;">'
+            f'📸 佳作榜 · Top 10</p>'
+            f'<div style="display:flex;gap:12px;overflow-x:auto;padding:4px 0 12px;'
+            f'-webkit-overflow-scrolling:touch;">'
+            f'{cards_html}'
+            f'</div></div>',
+            unsafe_allow_html=True,
+        )
+
     # 用户登录区
     if not st.session_state["user_nickname"]:
         st.markdown(
@@ -1455,28 +1550,10 @@ with hero_right:
                         "suffix": suffix,
                     }
 
-                    if supabase_client and st.session_state["user_nickname"]:
-                        bird_bbox = result.get("bird_bbox")
-                        thumb_b64 = generate_thumbnail_base64(
-                            image_bytes, uploaded_file.name, bird_bbox
-                        )
-                        if not thumb_b64:
-                            thumb_b64 = generate_thumbnail_base64(
-                                image_bytes, uploaded_file.name, None
-                            )
-                        saved = save_record_to_db(supabase_client, st.session_state["user_nickname"], result, thumb_b64)
-                        if not saved:
-                            st.toast(f"⚠️ {uploaded_file.name} 保存到云端失败", icon="⚠️")
-
+                # 新增记录后清除缓存，确保历史记录和排行榜刷新
                 fetch_user_history.clear()
                 fetch_leaderboard.clear()
-                progress_bar.progress(1.0, text="")
-                st.markdown(
-                    f'<div class="progress-done">'
-                    f'🎉 {len(new_files)} 张照片识别完成！'
-                    f'</div>',
-                    unsafe_allow_html=True,
-                )
+                fetch_top_photos.clear()
 
             results_with_bytes = []
             for uploaded_file in uploaded_files:
@@ -1690,6 +1767,7 @@ if supabase_client and user_nickname:
             # 清除缓存，确保下次查询拿到最新数据
             fetch_user_history.clear()
             fetch_leaderboard.clear()
+            fetch_top_photos.clear()
             st.toast("✅ 已删除", icon="✅")
         else:
             st.toast("⚠️ 删除失败，请检查数据库权限", icon="⚠️")
@@ -1839,6 +1917,7 @@ if supabase_client and user_nickname:
                 '</div>',
                 unsafe_allow_html=True,
             )
+
 
 # ============================================================
 # 页脚
