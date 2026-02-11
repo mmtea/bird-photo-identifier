@@ -15,7 +15,15 @@ try:
 except ImportError:
     HAS_PIL = False
 
+from datetime import datetime
+
 from openai import OpenAI
+
+try:
+    from supabase import create_client
+    HAS_SUPABASE = True
+except ImportError:
+    HAS_SUPABASE = False
 
 # RAW 格式后缀集合（索尼 ARW、佳能 CR2/CR3、尼康 NEF 等）
 RAW_EXTENSIONS = {".arw", ".cr2", ".cr3", ".nef", ".nrw", ".dng", ".raf", ".orf", ".rw2", ".pef", ".srw"}
@@ -791,6 +799,122 @@ def crop_to_bird(img: "Image.Image", bbox: list, padding_ratio: float = 0.15) ->
     return img.crop((crop_x1, crop_y1, crop_x2, crop_y2))
 
 
+# ============================================================
+# 数据库相关函数（Supabase）
+# ============================================================
+def get_supabase_client():
+    """获取 Supabase 客户端"""
+    if not HAS_SUPABASE:
+        return None
+    try:
+        supabase_url = st.secrets["SUPABASE_URL"]
+        supabase_key = st.secrets["SUPABASE_KEY"]
+        return create_client(supabase_url, supabase_key)
+    except (KeyError, FileNotFoundError):
+        return None
+
+
+def generate_thumbnail_base64(image_bytes: bytes, filename: str = "",
+                              bird_bbox: list = None, max_width: int = 200) -> str:
+    """生成缩略图的 base64 字符串（聚焦到鸟，压缩到 200px 宽）"""
+    img = image_bytes_to_pil(image_bytes, filename)
+    if img is None:
+        return ""
+    try:
+        if img.mode not in ("RGB", "L"):
+            img = img.convert("RGB")
+        if bird_bbox and len(bird_bbox) == 4:
+            img = crop_to_bird(img, bird_bbox)
+        width, height = img.size
+        if width > max_width:
+            ratio = max_width / width
+            new_size = (max_width, int(height * ratio))
+            img = img.resize(new_size, Image.LANCZOS)
+        buffer = io.BytesIO()
+        img.save(buffer, format="JPEG", quality=60)
+        return base64.b64encode(buffer.getvalue()).decode("utf-8")
+    except Exception:
+        return ""
+
+
+def save_record_to_db(supabase_client, user_nickname: str, result: dict,
+                      thumbnail_b64: str) -> bool:
+    """将一条识别记录保存到 Supabase 数据库"""
+    if supabase_client is None:
+        return False
+    try:
+        record = {
+            "user_nickname": user_nickname,
+            "chinese_name": result.get("chinese_name", "未知鸟类"),
+            "english_name": result.get("english_name", ""),
+            "order_chinese": result.get("order_chinese", ""),
+            "family_chinese": result.get("family_chinese", ""),
+            "confidence": result.get("confidence", "low"),
+            "score": result.get("score", 0),
+            "score_sharpness": result.get("score_sharpness", 0),
+            "score_composition": result.get("score_composition", 0),
+            "score_lighting": result.get("score_lighting", 0),
+            "score_background": result.get("score_background", 0),
+            "score_pose": result.get("score_pose", 0),
+            "score_artistry": result.get("score_artistry", 0),
+            "score_comment": result.get("score_comment", ""),
+            "identification_basis": result.get("identification_basis", ""),
+            "bird_description": result.get("bird_description", ""),
+            "shoot_date": result.get("shoot_date", ""),
+            "thumbnail_base64": thumbnail_b64,
+        }
+        supabase_client.table("bird_records").insert(record).execute()
+        return True
+    except Exception:
+        return False
+
+
+def fetch_user_history(supabase_client, user_nickname: str, limit: int = 50) -> list:
+    """查询用户的历史识别记录"""
+    if supabase_client is None:
+        return []
+    try:
+        response = (
+            supabase_client.table("bird_records")
+            .select("*")
+            .eq("user_nickname", user_nickname)
+            .order("created_at", desc=True)
+            .limit(limit)
+            .execute()
+        )
+        return response.data or []
+    except Exception:
+        return []
+
+
+def fetch_user_stats(supabase_client, user_nickname: str) -> dict:
+    """查询用户的统计数据"""
+    if supabase_client is None:
+        return {}
+    try:
+        response = (
+            supabase_client.table("bird_records")
+            .select("*")
+            .eq("user_nickname", user_nickname)
+            .execute()
+        )
+        records = response.data or []
+        if not records:
+            return {"total": 0, "species": 0, "avg_score": 0, "best_score": 0}
+        species_set = set(r["chinese_name"] for r in records if r.get("chinese_name"))
+        scores = [r["score"] for r in records if r.get("score")]
+        avg_score = sum(scores) / len(scores) if scores else 0
+        best_score = max(scores) if scores else 0
+        return {
+            "total": len(records),
+            "species": len(species_set),
+            "avg_score": round(avg_score, 1),
+            "best_score": best_score,
+        }
+    except Exception:
+        return {"total": 0, "species": 0, "avg_score": 0, "best_score": 0}
+
+
 def sanitize_filename(name: str) -> str:
     """清理文件名中的非法字符"""
     sanitized = re.sub(r'[\\/:*?"<>|]', '_', name)
@@ -887,7 +1011,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ============================================================
-# API Key（从 Streamlit Secrets 或环境变量读取，用户无需输入）
+# API Key & Supabase 初始化
 # ============================================================
 MAX_PHOTOS_PER_SESSION = 10
 
@@ -900,6 +1024,53 @@ except (KeyError, FileNotFoundError):
 if not api_key:
     st.error("服务暂不可用，请联系管理员配置 API Key。")
     st.stop()
+
+supabase_client = get_supabase_client()
+
+# ============================================================
+# 用户昵称（简单身份标识，用于关联历史记录）
+# ============================================================
+if "user_nickname" not in st.session_state:
+    st.session_state["user_nickname"] = ""
+
+nickname_col_left, nickname_col_center, nickname_col_right = st.columns([1, 2, 1])
+with nickname_col_center:
+    if not st.session_state["user_nickname"]:
+        st.markdown(
+            '<div style="text-align:center; margin:8px 0 4px;">'
+            '<span style="font-size:15px; color:#6e6e73;">👋 输入昵称，开启你的观鸟记录</span>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+        entered_nickname = st.text_input(
+            "你的昵称",
+            placeholder="例如：观鸟达人小明",
+            label_visibility="collapsed",
+            max_chars=20,
+        )
+        if entered_nickname and entered_nickname.strip():
+            st.session_state["user_nickname"] = entered_nickname.strip()
+            st.rerun()
+        if not entered_nickname:
+            st.stop()
+    else:
+        nickname_display = st.session_state["user_nickname"]
+        col_greeting, col_switch = st.columns([3, 1])
+        with col_greeting:
+            st.markdown(
+                f'<p style="font-size:14px; color:#86868b; margin:4px 0;">'
+                f'🐦 <b style="color:#1d1d1f;">{nickname_display}</b> 的观鸟记录</p>',
+                unsafe_allow_html=True,
+            )
+        with col_switch:
+            if st.button("切换用户", type="secondary", use_container_width=True):
+                st.session_state["user_nickname"] = ""
+                st.session_state.pop("identified_cache", None)
+                st.session_state.pop("results_with_bytes", None)
+                st.session_state.pop("zip_bytes", None)
+                st.rerun()
+
+user_nickname = st.session_state["user_nickname"]
 
 # ============================================================
 # 上传区域
@@ -988,6 +1159,14 @@ if uploaded_files and api_key:
                 "image_bytes": image_bytes,
                 "suffix": suffix,
             }
+
+            # 保存到云数据库（生成缩略图后异步存储）
+            if supabase_client and user_nickname:
+                bird_bbox = result.get("bird_bbox")
+                thumb_b64 = generate_thumbnail_base64(
+                    image_bytes, uploaded_file.name, bird_bbox
+                )
+                save_record_to_db(supabase_client, user_nickname, result, thumb_b64)
 
         progress_bar.progress(1.0, text=f"✅ 新增 {len(new_files)} 张识别完成！")
 
@@ -1219,6 +1398,97 @@ if "results_with_bytes" in st.session_state:
                 mime="application/zip",
                 use_container_width=True,
             )
+
+# ============================================================
+# 历史记录
+# ============================================================
+if supabase_client and user_nickname:
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.markdown('<p class="section-title">📚 我的观鸟记录</p>', unsafe_allow_html=True)
+
+    # 用户统计概览
+    user_stats = fetch_user_stats(supabase_client, user_nickname)
+    if user_stats and user_stats.get("total", 0) > 0:
+        hist_stat_cols = st.columns(4, gap="medium")
+        hist_stat_data = [
+            (str(user_stats["total"]), "累计识别"),
+            (str(user_stats["species"]), "鸟种数"),
+            (str(user_stats["avg_score"]), "平均分"),
+            (str(user_stats["best_score"]), "最高分"),
+        ]
+        for col, (value, label) in zip(hist_stat_cols, hist_stat_data):
+            with col:
+                st.markdown(
+                    f'<div class="stat-card">'
+                    f'<div class="stat-value">{value}</div>'
+                    f'<div class="stat-label">{label}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+
+        st.markdown("<br>", unsafe_allow_html=True)
+
+    # 历史记录列表
+    history_records = fetch_user_history(supabase_client, user_nickname)
+    if history_records:
+        with st.expander(f"查看全部历史记录（{len(history_records)} 条）", expanded=False):
+            for row_start in range(0, len(history_records), 5):
+                row_items = history_records[row_start:row_start + 5]
+                hist_cols = st.columns(5)
+                for col_idx, record in enumerate(row_items):
+                    with hist_cols[col_idx]:
+                        # 缩略图
+                        thumb_b64 = record.get("thumbnail_base64", "")
+                        if thumb_b64:
+                            try:
+                                thumb_bytes = base64.b64decode(thumb_b64)
+                                thumb_img = Image.open(io.BytesIO(thumb_bytes))
+                                st.image(thumb_img, use_container_width=True)
+                            except Exception:
+                                st.markdown(
+                                    '<div style="height:80px; background:rgba(0,0,0,0.04); '
+                                    'border-radius:10px; display:flex; align-items:center; '
+                                    'justify-content:center; color:#86868b; font-size:20px;">🐦</div>',
+                                    unsafe_allow_html=True,
+                                )
+                        else:
+                            st.markdown(
+                                '<div style="height:80px; background:rgba(0,0,0,0.04); '
+                                'border-radius:10px; display:flex; align-items:center; '
+                                'justify-content:center; color:#86868b; font-size:20px;">🐦</div>',
+                                unsafe_allow_html=True,
+                            )
+
+                        # 鸟名和评分
+                        hist_score = record.get("score", 0)
+                        hist_score_color = get_score_color(hist_score)
+                        st.markdown(
+                            f'<p style="font-size:13px; font-weight:600; color:#1d1d1f; '
+                            f'margin:4px 0 2px; line-height:1.2;">{record.get("chinese_name", "未知")}</p>'
+                            f'<span class="score-pill score-{hist_score_color}" '
+                            f'style="font-size:11px; padding:2px 8px;">'
+                            f'{get_score_emoji(hist_score)} {hist_score}</span>',
+                            unsafe_allow_html=True,
+                        )
+
+                        # 日期
+                        created_at = record.get("created_at", "")
+                        if created_at:
+                            try:
+                                date_display = created_at[:10]
+                                st.markdown(
+                                    f'<p style="font-size:11px; color:#86868b; margin:2px 0 8px;">'
+                                    f'📅 {date_display}</p>',
+                                    unsafe_allow_html=True,
+                                )
+                            except Exception:
+                                pass
+    else:
+        st.markdown(
+            '<p style="text-align:center; color:#86868b; font-size:14px; padding:20px 0;">'
+            '还没有识别记录，上传照片开始你的观鸟之旅吧 🐦</p>',
+            unsafe_allow_html=True,
+        )
 
 # ============================================================
 # 页脚
