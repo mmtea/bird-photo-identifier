@@ -17,6 +17,48 @@ except ImportError:
 
 from openai import OpenAI
 
+# RAW 格式后缀集合（索尼 ARW、佳能 CR2/CR3、尼康 NEF 等）
+RAW_EXTENSIONS = {".arw", ".cr2", ".cr3", ".nef", ".nrw", ".dng", ".raf", ".orf", ".rw2", ".pef", ".srw"}
+
+
+def is_raw_file(filename: str) -> bool:
+    """判断文件是否为 RAW 格式"""
+    return Path(filename).suffix.lower() in RAW_EXTENSIONS
+
+
+def extract_jpeg_from_raw(raw_bytes: bytes) -> bytes:
+    """从 RAW 文件中提取内嵌的 JPEG 预览图（纯 Python，无需额外依赖）。
+
+    大多数相机 RAW 格式（ARW/CR2/NEF/DNG 等）都基于 TIFF 结构，
+    内部嵌有一张全尺寸或接近全尺寸的 JPEG 预览图。
+    本函数通过扫描 JPEG SOI (FFD8) 标记来定位并提取最大的那张 JPEG。
+    """
+    jpeg_candidates = []
+    search_start = 0
+
+    while True:
+        soi_pos = raw_bytes.find(b'\xff\xd8', search_start)
+        if soi_pos == -1:
+            break
+
+        # 从 SOI 开始找对应的 EOI (FFD9)
+        eoi_pos = raw_bytes.find(b'\xff\xd9', soi_pos + 2)
+        if eoi_pos == -1:
+            break
+
+        jpeg_data = raw_bytes[soi_pos:eoi_pos + 2]
+        # 只保留大于 50KB 的 JPEG（过滤缩略图）
+        if len(jpeg_data) > 50 * 1024:
+            jpeg_candidates.append(jpeg_data)
+
+        search_start = eoi_pos + 2
+
+    if jpeg_candidates:
+        # 返回最大的那张（通常是全尺寸预览）
+        return max(jpeg_candidates, key=len)
+
+    return b""
+
 # ============================================================
 # 页面配置
 # ============================================================
@@ -374,11 +416,32 @@ st.markdown("""
 # ============================================================
 # 工具函数
 # ============================================================
-def encode_image_to_base64(image_bytes: bytes, max_size: int = 1024) -> str:
-    """将图片字节编码为 base64 字符串，可选压缩"""
-    if HAS_PIL:
+def image_bytes_to_pil(image_bytes: bytes, filename: str = "") -> "Image.Image | None":
+    """将图片字节转为 PIL Image，支持 RAW 格式（自动提取内嵌 JPEG）"""
+    if not HAS_PIL:
+        return None
+
+    # 如果是 RAW 格式，先提取内嵌 JPEG
+    actual_bytes = image_bytes
+    if is_raw_file(filename):
+        jpeg_data = extract_jpeg_from_raw(image_bytes)
+        if jpeg_data:
+            actual_bytes = jpeg_data
+        else:
+            return None
+
+    try:
+        img = Image.open(io.BytesIO(actual_bytes))
+        return img
+    except Exception:
+        return None
+
+
+def encode_image_to_base64(image_bytes: bytes, max_size: int = 1024, filename: str = "") -> str:
+    """将图片字节编码为 base64 字符串，可选压缩。支持 RAW 格式。"""
+    img = image_bytes_to_pil(image_bytes, filename)
+    if img is not None:
         try:
-            img = Image.open(io.BytesIO(image_bytes))
             if img.mode not in ("RGB", "L"):
                 img = img.convert("RGB")
             width, height = img.size
@@ -394,13 +457,23 @@ def encode_image_to_base64(image_bytes: bytes, max_size: int = 1024) -> str:
     return base64.b64encode(image_bytes).decode("utf-8")
 
 
-def extract_exif_info(image_bytes: bytes) -> dict:
-    """从照片 EXIF 中提取拍摄时间和 GPS 坐标"""
+def extract_exif_info(image_bytes: bytes, filename: str = "") -> dict:
+    """从照片 EXIF 中提取拍摄时间和 GPS 坐标。支持 RAW 格式。"""
     result = {"shoot_time": "", "gps_lat": None, "gps_lon": None}
     if not HAS_PIL:
         return result
+
+    # RAW 格式：先提取内嵌 JPEG 再读 EXIF
+    actual_bytes = image_bytes
+    if is_raw_file(filename):
+        jpeg_data = extract_jpeg_from_raw(image_bytes)
+        if jpeg_data:
+            actual_bytes = jpeg_data
+        else:
+            return result
+
     try:
-        img = Image.open(io.BytesIO(image_bytes))
+        img = Image.open(io.BytesIO(actual_bytes))
         exif_data = img._getexif()
         if not exif_data:
             return result
@@ -784,13 +857,14 @@ if not api_key:
 # ============================================================
 st.markdown('<p class="section-title">上传照片</p>', unsafe_allow_html=True)
 st.markdown(
-    f'<p class="section-subtitle">支持 JPG、PNG、HEIC、TIFF、BMP、WebP 格式，每次最多 {MAX_PHOTOS_PER_SESSION} 张</p>',
+    f'<p class="section-subtitle">支持 JPG、PNG、HEIC、TIFF、BMP、WebP 及 RAW 格式（ARW/CR2/NEF/DNG 等），每次最多 {MAX_PHOTOS_PER_SESSION} 张</p>',
     unsafe_allow_html=True,
 )
 
 uploaded_files = st.file_uploader(
     "拖拽照片到此处，或点击选择文件",
-    type=["jpg", "jpeg", "png", "tif", "tiff", "heic", "bmp", "webp"],
+    type=["jpg", "jpeg", "png", "tif", "tiff", "heic", "bmp", "webp",
+          "arw", "cr2", "cr3", "nef", "nrw", "dng", "raf", "orf", "rw2", "pef", "srw"],
     accept_multiple_files=True,
     label_visibility="collapsed",
 )
@@ -839,8 +913,8 @@ if uploaded_files and api_key:
             image_bytes = uploaded_file.getvalue()
             suffix = Path(uploaded_file.name).suffix.lower()
 
-            # 提取 EXIF
-            exif_info = extract_exif_info(image_bytes)
+            # 提取 EXIF（传入文件名以支持 RAW 格式）
+            exif_info = extract_exif_info(image_bytes, uploaded_file.name)
 
             # 逆地理编码：将 GPS 坐标转换为地名，帮助 AI 更准确识别
             if exif_info.get("gps_lat") and exif_info.get("gps_lon"):
@@ -848,8 +922,8 @@ if uploaded_files and api_key:
                 if geocoded_location:
                     exif_info["geocoded_location"] = geocoded_location
 
-            # AI 识别
-            image_base64 = encode_image_to_base64(image_bytes)
+            # AI 识别（传入文件名以支持 RAW 格式）
+            image_base64 = encode_image_to_base64(image_bytes, filename=uploaded_file.name)
             result = identify_bird(image_base64, api_key, exif_info)
 
             # 拍摄日期
@@ -963,11 +1037,12 @@ if "results_with_bytes" in st.session_state:
             confidence = result.get("confidence", "low")
 
             with card_cols[col_idx]:
-                # 照片
-                try:
-                    img = Image.open(io.BytesIO(image_bytes))
-                    st.image(img, use_container_width=True)
-                except Exception:
+                # 照片（支持 RAW 格式预览）
+                original_name = result.get("original_name", "")
+                preview_img = image_bytes_to_pil(image_bytes, original_name)
+                if preview_img is not None:
+                    st.image(preview_img, use_container_width=True)
+                else:
                     st.text("无法预览")
 
                 # 鸟种名称 + 评分
