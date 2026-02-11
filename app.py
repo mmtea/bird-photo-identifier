@@ -4,6 +4,7 @@ import io
 import re
 import json
 import base64
+import hashlib
 import zipfile
 import urllib.request
 from pathlib import Path
@@ -772,8 +773,10 @@ if uploaded_files:
 # 上传后自动识别
 # ============================================================
 if uploaded_files and api_key:
-    # 用上传文件的名称列表作为缓存 key，避免重复识别
-    file_key = "_".join(sorted(f.name for f in uploaded_files))
+    # 用文件名+大小+内容哈希作为缓存 key，确保不同文件绝不会命中缓存
+    file_key = "_".join(
+        sorted(f"{f.name}_{f.size}_{hashlib.md5(f.getvalue()).hexdigest()[:8]}" for f in uploaded_files)
+    )
 
     if st.session_state.get("last_file_key") != file_key:
         st.session_state["last_file_key"] = file_key
