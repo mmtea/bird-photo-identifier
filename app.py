@@ -624,7 +624,13 @@ def identify_bird(image_base64: str, api_key: str, exif_info: dict) -> dict:
                             "- 腿脚颜色\n"
                             "- 注意区分中国常见的易混淆种（如各种柳莺、鹀、鸫、鹟等）\n"
                             "- 结合栖息环境（水域/林地/草地/城市等）辅助判断\n\n"
-                            "## 任务二：专业摄影评分\n"
+                            "## 任务二：鸟的位置标注\n"
+                            "请估算鸟在图片中的位置，用百分比坐标表示边界框 [x1, y1, x2, y2]：\n"
+                            "- x1, y1 是鸟所在区域左上角的坐标（占图片宽高的百分比，0-100）\n"
+                            "- x2, y2 是鸟所在区域右下角的坐标（占图片宽高的百分比，0-100）\n"
+                            "- 边界框应紧密包围整只鸟（包括尾羽和脚），但不要留太多空白\n"
+                            "- 如果图片中有多只鸟，标注最显眼/最大的那只\n\n"
+                            "## 任务三：专业摄影评分\n"
                             "以国际鸟类摄影大赛的标准严格评分。\n\n"
                             "**【核心评分方法 - 必须严格遵守】**\n"
                             "每个维度从该维度满分的50%（即中位数）开始，然后根据优缺点加减分：\n"
@@ -686,6 +692,7 @@ def identify_bird(image_base64: str, api_key: str, exif_info: dict) -> dict:
                             '  "confidence": "根据实际判断填 high/medium/low",\n'
                             '  "identification_basis": "根据实际观察填写识别依据（20字以内）",\n'
                             '  "bird_description": "根据识别出的鸟种填写详细介绍（100-150字），包括外形特点、生活习性、栖息生境、全球分布、在中国的常见程度",\n'
+                            '  "bird_bbox": [x1, y1, x2, y2],\n'
                             '  "score": 0,\n'
                             '  "score_sharpness": 0,\n'
                             '  "score_composition": 0,\n'
@@ -740,6 +747,48 @@ def identify_bird(image_base64: str, api_key: str, exif_info: dict) -> dict:
         "identification_basis": "",
         "bird_description": "",
     }
+
+
+def crop_to_bird(img: "Image.Image", bbox: list, padding_ratio: float = 0.15) -> "Image.Image":
+    """根据 AI 返回的百分比 bounding box 裁剪图片，聚焦到鸟的区域。
+
+    bbox 格式: [x1, y1, x2, y2]，值为 0-100 的百分比。
+    padding_ratio: 在 bbox 外围额外保留的比例（避免裁太紧）。
+    """
+    if not bbox or len(bbox) != 4:
+        return img
+
+    width, height = img.size
+    x1_pct, y1_pct, x2_pct, y2_pct = bbox
+
+    # 百分比转像素
+    x1 = int(width * x1_pct / 100)
+    y1 = int(height * y1_pct / 100)
+    x2 = int(width * x2_pct / 100)
+    y2 = int(height * y2_pct / 100)
+
+    # 确保坐标有效
+    if x2 <= x1 or y2 <= y1:
+        return img
+
+    # 添加 padding（让鸟不要贴边）
+    box_width = x2 - x1
+    box_height = y2 - y1
+    pad_x = int(box_width * padding_ratio)
+    pad_y = int(box_height * padding_ratio)
+
+    crop_x1 = max(0, x1 - pad_x)
+    crop_y1 = max(0, y1 - pad_y)
+    crop_x2 = min(width, x2 + pad_x)
+    crop_y2 = min(height, y2 + pad_y)
+
+    # 如果裁剪区域太小（鸟已经占满画面），就不裁剪
+    crop_area = (crop_x2 - crop_x1) * (crop_y2 - crop_y1)
+    total_area = width * height
+    if crop_area > total_area * 0.85:
+        return img
+
+    return img.crop((crop_x1, crop_y1, crop_x2, crop_y2))
 
 
 def sanitize_filename(name: str) -> str:
@@ -1037,11 +1086,19 @@ if "results_with_bytes" in st.session_state:
             confidence = result.get("confidence", "low")
 
             with card_cols[col_idx]:
-                # 照片（支持 RAW 格式预览）
+                # 照片（支持 RAW 格式预览 + 聚焦到鸟）
                 original_name = result.get("original_name", "")
                 preview_img = image_bytes_to_pil(image_bytes, original_name)
                 if preview_img is not None:
-                    st.image(preview_img, use_container_width=True)
+                    bird_bbox = result.get("bird_bbox")
+                    if bird_bbox and len(bird_bbox) == 4:
+                        try:
+                            cropped_img = crop_to_bird(preview_img.copy(), bird_bbox)
+                            st.image(cropped_img, use_container_width=True)
+                        except Exception:
+                            st.image(preview_img, use_container_width=True)
+                    else:
+                        st.image(preview_img, use_container_width=True)
                 else:
                     st.text("无法预览")
 
