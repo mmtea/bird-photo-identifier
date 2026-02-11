@@ -162,6 +162,39 @@ st.markdown("""
         margin: 0;
     }
 
+    /* 识别进度 - 仪式感 */
+    .progress-banner {
+        text-align: center;
+        padding: 12px 16px;
+        margin: 8px 0;
+        border-radius: 12px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: #ffffff;
+        font-size: 14px;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+        animation: pulse-glow 2s ease-in-out infinite;
+    }
+    @keyframes pulse-glow {
+        0%, 100% { box-shadow: 0 0 8px rgba(102,126,234,0.3); }
+        50% { box-shadow: 0 0 20px rgba(102,126,234,0.6); }
+    }
+    .progress-done {
+        text-align: center;
+        padding: 10px 16px;
+        margin: 8px 0;
+        border-radius: 12px;
+        background: linear-gradient(135deg, #34c759 0%, #30d158 100%);
+        color: #ffffff;
+        font-size: 14px;
+        font-weight: 600;
+    }
+    .results-divider {
+        height: 1px;
+        background: linear-gradient(90deg, transparent, rgba(102,126,234,0.3), transparent);
+        margin: 16px 0;
+    }
+
     /* 排行榜区域 - 与 hero 同色系 */
     .leaderboard-header {
         text-align: center;
@@ -1272,7 +1305,6 @@ with hero_right:
                 st.session_state.pop("results_with_bytes", None)
                 st.session_state.pop("zip_bytes", None)
                 st.rerun()
-
         # 上传区域（紧跟在登录下方）
         st.markdown(
             f'<p class="section-subtitle" style="margin-top:8px;">'
@@ -1298,320 +1330,285 @@ with hero_right:
                 unsafe_allow_html=True,
             )
 
-user_nickname = st.session_state["user_nickname"]
+        # ============================================================
+        # 上传后自动识别（在右栏内）
+        # ============================================================
+        if uploaded_files and api_key:
+            if "identified_cache" not in st.session_state:
+                st.session_state["identified_cache"] = {}
 
-# 未登录时 uploaded_files 不存在，初始化为空
-if "uploaded_files" not in dir():
-    uploaded_files = None
+            def make_file_key(uploaded_file):
+                return f"{uploaded_file.name}_{uploaded_file.size}"
 
-# ============================================================
-# 上传后自动识别
-# ============================================================
-if uploaded_files and api_key:
-    # 初始化单文件级别的缓存字典：file_unique_key -> result item
-    if "identified_cache" not in st.session_state:
-        st.session_state["identified_cache"] = {}
+            current_file_keys = set()
+            new_files = []
+            for uploaded_file in uploaded_files:
+                fkey = make_file_key(uploaded_file)
+                current_file_keys.add(fkey)
+                if fkey not in st.session_state["identified_cache"]:
+                    new_files.append(uploaded_file)
 
-    # 用文件名+大小作为轻量级唯一标识（避免对大文件算 MD5 导致卡顿）
-    def make_file_key(uploaded_file):
-        return f"{uploaded_file.name}_{uploaded_file.size}"
-
-    # 找出本次上传中尚未识别的新文件
-    current_file_keys = set()
-    new_files = []
-    for uploaded_file in uploaded_files:
-        fkey = make_file_key(uploaded_file)
-        current_file_keys.add(fkey)
-        if fkey not in st.session_state["identified_cache"]:
-            new_files.append(uploaded_file)
-
-    # 只对新文件进行识别（增量识别）
-    if new_files:
-        progress_bar = st.progress(0, text="正在识别新照片...")
-
-        for idx, uploaded_file in enumerate(new_files):
-            fkey = make_file_key(uploaded_file)
-            progress_text = f"正在识别 [{idx + 1}/{len(new_files)}]: {uploaded_file.name}"
-            progress_bar.progress(idx / len(new_files), text=progress_text)
-
-            image_bytes = uploaded_file.getvalue()
-            suffix = Path(uploaded_file.name).suffix.lower()
-
-            # 提取 EXIF（传入文件名以支持 RAW 格式）
-            exif_info = extract_exif_info(image_bytes, uploaded_file.name)
-
-            # 逆地理编码：将 GPS 坐标转换为地名，帮助 AI 更准确识别
-            if exif_info.get("gps_lat") and exif_info.get("gps_lon"):
-                geocoded_location = reverse_geocode(exif_info["gps_lat"], exif_info["gps_lon"])
-                if geocoded_location:
-                    exif_info["geocoded_location"] = geocoded_location
-
-            # AI 识别（传入文件名以支持 RAW 格式）
-            image_base64 = encode_image_to_base64(image_bytes, filename=uploaded_file.name)
-            result = identify_bird(image_base64, api_key, exif_info)
-
-            # 拍摄日期
-            shoot_date = ""
-            if exif_info.get("shoot_time"):
-                shoot_date = exif_info["shoot_time"][:8]
-            result["shoot_date"] = shoot_date
-            result["original_name"] = uploaded_file.name
-
-            # 缓存到 session_state，下次不再重复识别
-            st.session_state["identified_cache"][fkey] = {
-                "result": result,
-                "image_bytes": image_bytes,
-                "suffix": suffix,
-            }
-
-            # 保存到云数据库（生成缩略图后存储）
-            if supabase_client and user_nickname:
-                bird_bbox = result.get("bird_bbox")
-                thumb_b64 = generate_thumbnail_base64(
-                    image_bytes, uploaded_file.name, bird_bbox
-                )
-                if not thumb_b64:
-                    # bbox 裁剪失败时，尝试不裁剪直接生成缩略图
-                    thumb_b64 = generate_thumbnail_base64(
-                        image_bytes, uploaded_file.name, None
-                    )
-                saved = save_record_to_db(supabase_client, user_nickname, result, thumb_b64)
-                if not saved:
-                    st.toast(f"⚠️ {uploaded_file.name} 保存到云端失败", icon="⚠️")
-
-        # 新增记录后清除缓存，确保历史记录和排行榜刷新
-        fetch_user_history.clear()
-        fetch_leaderboard.clear()
-        progress_bar.progress(1.0, text=f"✅ 新增 {len(new_files)} 张识别完成！")
-
-    # 按当前上传文件的顺序，从缓存中组装完整结果列表
-    results_with_bytes = []
-    for uploaded_file in uploaded_files:
-        fkey = make_file_key(uploaded_file)
-        if fkey in st.session_state["identified_cache"]:
-            results_with_bytes.append(st.session_state["identified_cache"][fkey])
-
-    # 生成 ZIP（每次都重新生成，因为文件组合可能变化）
-    if results_with_bytes:
-        zip_bytes = create_organized_zip(results_with_bytes)
-        st.session_state["results_with_bytes"] = results_with_bytes
-        st.session_state["zip_bytes"] = zip_bytes
-
-
-# ============================================================
-# 展示结果
-# ============================================================
-if "results_with_bytes" in st.session_state:
-    results_with_bytes = st.session_state["results_with_bytes"]
-    results = [item["result"] for item in results_with_bytes]
-
-    st.markdown('<div id="results-anchor"></div>', unsafe_allow_html=True)
-    st.markdown('<p class="section-title">识别结果</p>', unsafe_allow_html=True)
-
-    # 自动滚动到结果区域
-    import streamlit.components.v1 as components
-    components.html(
-        '<script>parent.document.getElementById("results-anchor").scrollIntoView({behavior:"smooth"});</script>',
-        height=0,
-    )
-
-    # 汇总统计 - Apple 风格卡片
-    scores = [r["score"] for r in results if r.get("score")]
-    if scores:
-        species_set = set(r["chinese_name"] for r in results)
-        avg_score = sum(scores) / len(scores)
-        best_score = max(scores)
-
-        stat_cols = st.columns(4, gap="medium")
-        stat_data = [
-            (str(len(results)), "照片"),
-            (f"{len(species_set)}", "鸟种"),
-            (f"{avg_score:.1f}", "平均分"),
-            (f"{best_score}", "最高分"),
-        ]
-        for col, (value, label) in zip(stat_cols, stat_data):
-            with col:
+            if new_files:
+                # 仪式感进度提示
                 st.markdown(
-                    f'<div class="stat-card">'
-                    f'<div class="stat-value">{value}</div>'
-                    f'<div class="stat-label">{label}</div>'
+                    '<div class="progress-banner">'
+                    '✨ AI 正在分析你的照片…'
+                    '</div>',
+                    unsafe_allow_html=True,
+                )
+                progress_bar = st.progress(0)
+
+                for idx, uploaded_file in enumerate(new_files):
+                    fkey = make_file_key(uploaded_file)
+                    progress_bar.progress(
+                        (idx + 0.5) / len(new_files),
+                        text=f"🔍 识别中 ({idx + 1}/{len(new_files)}) {uploaded_file.name}",
+                    )
+
+                    image_bytes = uploaded_file.getvalue()
+                    suffix = Path(uploaded_file.name).suffix.lower()
+                    exif_info = extract_exif_info(image_bytes, uploaded_file.name)
+
+                    if exif_info.get("gps_lat") and exif_info.get("gps_lon"):
+                        geocoded_location = reverse_geocode(exif_info["gps_lat"], exif_info["gps_lon"])
+                        if geocoded_location:
+                            exif_info["geocoded_location"] = geocoded_location
+
+                    image_base64 = encode_image_to_base64(image_bytes, filename=uploaded_file.name)
+                    result = identify_bird(image_base64, api_key, exif_info)
+
+                    shoot_date = ""
+                    if exif_info.get("shoot_time"):
+                        shoot_date = exif_info["shoot_time"][:8]
+                    result["shoot_date"] = shoot_date
+                    result["original_name"] = uploaded_file.name
+
+                    st.session_state["identified_cache"][fkey] = {
+                        "result": result,
+                        "image_bytes": image_bytes,
+                        "suffix": suffix,
+                    }
+
+                    if supabase_client and st.session_state["user_nickname"]:
+                        bird_bbox = result.get("bird_bbox")
+                        thumb_b64 = generate_thumbnail_base64(
+                            image_bytes, uploaded_file.name, bird_bbox
+                        )
+                        if not thumb_b64:
+                            thumb_b64 = generate_thumbnail_base64(
+                                image_bytes, uploaded_file.name, None
+                            )
+                        saved = save_record_to_db(supabase_client, st.session_state["user_nickname"], result, thumb_b64)
+                        if not saved:
+                            st.toast(f"⚠️ {uploaded_file.name} 保存到云端失败", icon="⚠️")
+
+                fetch_user_history.clear()
+                fetch_leaderboard.clear()
+                progress_bar.progress(1.0, text="")
+                st.markdown(
+                    f'<div class="progress-done">'
+                    f'🎉 {len(new_files)} 张照片识别完成！'
                     f'</div>',
                     unsafe_allow_html=True,
                 )
 
-    st.markdown("<br>", unsafe_allow_html=True)
+            results_with_bytes = []
+            for uploaded_file in uploaded_files:
+                fkey = make_file_key(uploaded_file)
+                if fkey in st.session_state["identified_cache"]:
+                    results_with_bytes.append(st.session_state["identified_cache"][fkey])
 
-    # 分类统计
-    taxonomy = {}
-    for result in results:
-        order = result.get("order_chinese", "未知目")
-        family = result.get("family_chinese", "未知科")
-        species_name = result["chinese_name"]
-        taxonomy.setdefault(order, {}).setdefault(family, set())
-        taxonomy[order][family].add(species_name)
+            if results_with_bytes:
+                zip_bytes = create_organized_zip(results_with_bytes)
+                st.session_state["results_with_bytes"] = results_with_bytes
+                st.session_state["zip_bytes"] = zip_bytes
 
-    with st.expander("分类学概览"):
-        for order, families in sorted(taxonomy.items()):
-            st.markdown(f"**{order}**")
-            for family, species_set in sorted(families.items()):
-                species_list = " · ".join(sorted(species_set))
-                st.markdown(
-                    f'&nbsp;&nbsp;&nbsp;&nbsp;'
-                    f'<span class="taxonomy-pill family-pill">{family}</span> '
-                    f'<span style="color:#6e6e73; font-size:14px;">{species_list}</span>',
-                    unsafe_allow_html=True,
-                )
+        # ============================================================
+        # 展示结果（在右栏内）
+        # ============================================================
+        if "results_with_bytes" in st.session_state:
+            results_with_bytes = st.session_state["results_with_bytes"]
+            results = [item["result"] for item in results_with_bytes]
 
-    st.markdown("<br>", unsafe_allow_html=True)
+            st.markdown(
+                '<div class="results-divider"></div>',
+                unsafe_allow_html=True,
+            )
 
-    # 逐张展示 - 一行4个卡片网格
-    for row_start in range(0, len(results_with_bytes), 4):
-        row_items = results_with_bytes[row_start:row_start + 4]
-        card_cols = st.columns(4)
+            # 汇总统计
+            scores = [r["score"] for r in results if r.get("score")]
+            if scores:
+                species_set = set(r["chinese_name"] for r in results)
+                avg_score = sum(scores) / len(scores)
+                best_score = max(scores)
 
-        for col_idx, item in enumerate(row_items):
-            result = item["result"]
-            image_bytes = item["image_bytes"]
-
-            score = result.get("score", 0)
-            score_color = get_score_color(score)
-            score_emoji = get_score_emoji(score)
-            confidence = result.get("confidence", "low")
-
-            with card_cols[col_idx]:
-                # 照片（支持 RAW 格式预览 + 聚焦到鸟）
-                original_name = result.get("original_name", "")
-                preview_img = image_bytes_to_pil(image_bytes, original_name)
-                if preview_img is not None:
-                    bird_bbox = result.get("bird_bbox")
-                    if bird_bbox and len(bird_bbox) == 4:
-                        try:
-                            cropped_img = crop_to_bird(preview_img.copy(), bird_bbox)
-                            st.image(cropped_img, use_container_width=True)
-                        except Exception:
-                            st.image(preview_img, use_container_width=True)
-                    else:
-                        st.image(preview_img, use_container_width=True)
-                else:
-                    st.text("无法预览")
-
-                # 鸟种名称 + 评分
-                st.markdown(
-                    f'<p class="bird-name">{result.get("chinese_name", "未知")}</p>'
-                    f'<p class="bird-name-en">{result.get("english_name", "")}</p>',
-                    unsafe_allow_html=True,
-                )
-
-                # 分类标签 + 评分徽章
-                confidence_class = f"confidence-{confidence}"
-                st.markdown(
-                    f'<span class="taxonomy-pill order-pill">{result.get("order_chinese", "")}</span>'
-                    f'<span class="taxonomy-pill family-pill">{result.get("family_chinese", "")}</span>'
-                    f'<br>'
-                    f'<span class="score-pill score-{score_color}" style="margin-top:6px;">'
-                    f'{score_emoji} {score}</span>'
-                    f'&nbsp;'
-                    f'<span class="confidence-dot {confidence_class}"></span>'
-                    f'<span style="font-size:12px; color:#86868b;">{confidence}</span>',
-                    unsafe_allow_html=True,
-                )
-
-                # 识别依据
-                basis = result.get("identification_basis", "")
-                if basis:
-                    st.markdown(
-                        f'<div style="font-size:12px; color:#6e6e73; margin-top:6px;">'
-                        f'<b style="color:#86868b;">识别依据</b> {basis}</div>',
-                        unsafe_allow_html=True,
-                    )
-
-                # 鸟类介绍（折叠展示，避免卡片过长）
-                bird_desc = result.get("bird_description", "")
-                if bird_desc:
-                    with st.expander("🐦 鸟类介绍"):
+                stat_cols = st.columns(4, gap="small")
+                stat_data = [
+                    (str(len(results)), "照片"),
+                    (f"{len(species_set)}", "鸟种"),
+                    (f"{avg_score:.1f}", "均分"),
+                    (f"{best_score}", "最高"),
+                ]
+                for col, (value, label) in zip(stat_cols, stat_data):
+                    with col:
                         st.markdown(
-                            f'<div style="font-size:12px; color:#3a3a3c; line-height:1.7;">'
-                            f'{bird_desc}</div>',
+                            f'<div class="stat-card">'
+                            f'<div class="stat-value">{value}</div>'
+                            f'<div class="stat-label">{label}</div>'
+                            f'</div>',
                             unsafe_allow_html=True,
                         )
 
-                # 拍摄日期
-                shoot_date = result.get("shoot_date", "")
-                if shoot_date and len(shoot_date) >= 8:
-                    formatted_date = f"{shoot_date[:4]}.{shoot_date[4:6]}.{shoot_date[6:8]}"
-                    st.markdown(
-                        f'<div style="font-size:12px; color:#86868b; margin-top:4px;">'
-                        f'📅 {formatted_date}</div>',
-                        unsafe_allow_html=True,
-                    )
+            # 分类统计
+            taxonomy = {}
+            for result in results:
+                order = result.get("order_chinese", "未知目")
+                family = result.get("family_chinese", "未知科")
+                species_name = result["chinese_name"]
+                taxonomy.setdefault(order, {}).setdefault(family, set())
+                taxonomy[order][family].add(species_name)
 
-                # 分项评分条形图（紧凑版）
-                dimensions = [
-                    ("清晰", result.get("score_sharpness", 0), 20),
-                    ("构图", result.get("score_composition", 0), 20),
-                    ("光线", result.get("score_lighting", 0), 20),
-                    ("背景", result.get("score_background", 0), 15),
-                    ("姿态", result.get("score_pose", 0), 15),
-                    ("艺术", result.get("score_artistry", 0), 10),
-                ]
-                bars_html = ""
-                for dim_name, dim_score, dim_max in dimensions:
-                    percentage = (dim_score / dim_max * 100) if dim_max > 0 else 0
-                    if percentage >= 85:
-                        bar_color = "#34c759"
-                    elif percentage >= 70:
-                        bar_color = "#007aff"
-                    elif percentage >= 50:
-                        bar_color = "#ff9500"
-                    else:
-                        bar_color = "#ff3b30"
-                    bars_html += (
-                        f'<div style="display:flex; align-items:center; margin:2px 0; font-size:11px;">'
-                        f'<span style="width:28px; color:#86868b; font-weight:500; flex-shrink:0;">{dim_name}</span>'
-                        f'<div style="flex:1; height:6px; background:rgba(0,0,0,0.06); border-radius:3px; margin:0 4px; overflow:hidden;">'
-                        f'<div style="width:{percentage}%; height:100%; background:{bar_color}; border-radius:3px;"></div></div>'
-                        f'<span style="width:32px; text-align:right; color:#1d1d1f; font-weight:600; font-size:11px;">{dim_score}/{dim_max}</span>'
-                        f'</div>'
-                    )
-                st.markdown(
-                    f'<div style="background:rgba(0,0,0,0.02); border-radius:10px; padding:8px 10px; margin-top:6px;">'
-                    f'{bars_html}</div>',
-                    unsafe_allow_html=True,
+            with st.expander("分类学概览"):
+                for order, families in sorted(taxonomy.items()):
+                    st.markdown(f"**{order}**")
+                    for family, species_set in sorted(families.items()):
+                        species_list = " · ".join(sorted(species_set))
+                        st.markdown(
+                            f'&nbsp;&nbsp;&nbsp;&nbsp;'
+                            f'<span class="taxonomy-pill family-pill">{family}</span> '
+                            f'<span style="color:#6e6e73; font-size:14px;">{species_list}</span>',
+                            unsafe_allow_html=True,
+                        )
+
+            # 逐张展示 - 一行3个卡片网格（右栏空间适配）
+            for row_start in range(0, len(results_with_bytes), 3):
+                row_items = results_with_bytes[row_start:row_start + 3]
+                card_cols = st.columns(3)
+
+                for col_idx, item in enumerate(row_items):
+                    result = item["result"]
+                    image_bytes = item["image_bytes"]
+
+                    score = result.get("score", 0)
+                    score_color = get_score_color(score)
+                    score_emoji = get_score_emoji(score)
+                    confidence = result.get("confidence", "low")
+
+                    with card_cols[col_idx]:
+                        original_name = result.get("original_name", "")
+                        preview_img = image_bytes_to_pil(image_bytes, original_name)
+                        if preview_img is not None:
+                            bird_bbox = result.get("bird_bbox")
+                            if bird_bbox and len(bird_bbox) == 4:
+                                try:
+                                    cropped_img = crop_to_bird(preview_img.copy(), bird_bbox)
+                                    st.image(cropped_img, use_container_width=True)
+                                except Exception:
+                                    st.image(preview_img, use_container_width=True)
+                            else:
+                                st.image(preview_img, use_container_width=True)
+                        else:
+                            st.text("无法预览")
+
+                        st.markdown(
+                            f'<p class="bird-name">{result.get("chinese_name", "未知")}</p>'
+                            f'<p class="bird-name-en">{result.get("english_name", "")}</p>',
+                            unsafe_allow_html=True,
+                        )
+
+                        confidence_class = f"confidence-{confidence}"
+                        st.markdown(
+                            f'<span class="taxonomy-pill order-pill">{result.get("order_chinese", "")}</span>'
+                            f'<span class="taxonomy-pill family-pill">{result.get("family_chinese", "")}</span>'
+                            f'<br>'
+                            f'<span class="score-pill score-{score_color}" style="margin-top:6px;">'
+                            f'{score_emoji} {score}</span>'
+                            f'&nbsp;'
+                            f'<span class="confidence-dot {confidence_class}"></span>'
+                            f'<span style="font-size:12px; color:#86868b;">{confidence}</span>',
+                            unsafe_allow_html=True,
+                        )
+
+                        basis = result.get("identification_basis", "")
+                        if basis:
+                            st.markdown(
+                                f'<div style="font-size:12px; color:#6e6e73; margin-top:6px;">'
+                                f'<b style="color:#86868b;">识别依据</b> {basis}</div>',
+                                unsafe_allow_html=True,
+                            )
+
+                        bird_desc = result.get("bird_description", "")
+                        if bird_desc:
+                            with st.expander("🐦 鸟类介绍"):
+                                st.markdown(
+                                    f'<div style="font-size:12px; color:#3a3a3c; line-height:1.7;">'
+                                    f'{bird_desc}</div>',
+                                    unsafe_allow_html=True,
+                                )
+
+                        shoot_date = result.get("shoot_date", "")
+                        if shoot_date and len(shoot_date) >= 8:
+                            formatted_date = f"{shoot_date[:4]}.{shoot_date[4:6]}.{shoot_date[6:8]}"
+                            st.markdown(
+                                f'<div style="font-size:12px; color:#86868b; margin-top:4px;">'
+                                f'📅 {formatted_date}</div>',
+                                unsafe_allow_html=True,
+                            )
+
+                        dimensions = [
+                            ("清晰", result.get("score_sharpness", 0), 20),
+                            ("构图", result.get("score_composition", 0), 20),
+                            ("光线", result.get("score_lighting", 0), 20),
+                            ("背景", result.get("score_background", 0), 15),
+                            ("姿态", result.get("score_pose", 0), 15),
+                            ("艺术", result.get("score_artistry", 0), 10),
+                        ]
+                        bars_html = ""
+                        for dim_name, dim_score, dim_max in dimensions:
+                            percentage = (dim_score / dim_max * 100) if dim_max > 0 else 0
+                            if percentage >= 85:
+                                bar_color = "#34c759"
+                            elif percentage >= 70:
+                                bar_color = "#007aff"
+                            elif percentage >= 50:
+                                bar_color = "#ff9500"
+                            else:
+                                bar_color = "#ff3b30"
+                            bars_html += (
+                                f'<div style="display:flex; align-items:center; margin:2px 0; font-size:11px;">'
+                                f'<span style="width:28px; color:#86868b; font-weight:500; flex-shrink:0;">{dim_name}</span>'
+                                f'<div style="flex:1; height:6px; background:rgba(0,0,0,0.06); border-radius:3px; margin:0 4px; overflow:hidden;">'
+                                f'<div style="width:{percentage}%; height:100%; background:{bar_color}; border-radius:3px;"></div></div>'
+                                f'<span style="width:32px; text-align:right; color:#1d1d1f; font-weight:600; font-size:11px;">{dim_score}/{dim_max}</span>'
+                                f'</div>'
+                            )
+                        st.markdown(
+                            f'<div style="background:rgba(0,0,0,0.02); border-radius:10px; padding:8px 10px; margin-top:6px;">'
+                            f'{bars_html}</div>',
+                            unsafe_allow_html=True,
+                        )
+
+                        score_comment = result.get("score_comment", "")
+                        if score_comment:
+                            st.markdown(
+                                f'<div style="font-size:12px; color:#6e6e73; font-style:italic; '
+                                f'margin-top:6px; padding:6px 8px; background:rgba(0,0,0,0.03); '
+                                f'border-radius:8px;">💬 {score_comment}</div>',
+                                unsafe_allow_html=True,
+                            )
+
+            # 下载区域
+            if "zip_bytes" in st.session_state:
+                st.markdown('<div class="results-divider"></div>', unsafe_allow_html=True)
+                st.download_button(
+                    label="📦 下载整理后的照片",
+                    data=st.session_state["zip_bytes"],
+                    file_name="BirdEye_影禽_鸟类照片整理.zip",
+                    mime="application/zip",
+                    use_container_width=True,
                 )
 
-                # 点评
-                score_comment = result.get("score_comment", "")
-                if score_comment:
-                    st.markdown(
-                        f'<div style="font-size:12px; color:#6e6e73; font-style:italic; '
-                        f'margin-top:6px; padding:6px 8px; background:rgba(0,0,0,0.03); '
-                        f'border-radius:8px;">💬 {score_comment}</div>',
-                        unsafe_allow_html=True,
-                    )
-
-        st.markdown("<hr>", unsafe_allow_html=True)
-
-    # ============================================================
-    # 下载区域
-    # ============================================================
-    st.markdown('<p class="section-title">下载整理</p>', unsafe_allow_html=True)
-    st.markdown(
-        '<p class="section-subtitle">'
-        '照片已按 目 / 科 层级分文件夹整理，并重命名为 鸟名_时间_评分 格式'
-        '</p>',
-        unsafe_allow_html=True,
-    )
-
-    dl_col_left, dl_col_center, dl_col_right = st.columns([1, 2, 1])
-    with dl_col_center:
-        if "zip_bytes" in st.session_state:
-            st.download_button(
-                label="下载整理后的照片",
-                data=st.session_state["zip_bytes"],
-                file_name="BirdEye_影禽_鸟类照片整理.zip",
-                mime="application/zip",
-                use_container_width=True,
-            )
+user_nickname = st.session_state["user_nickname"]
 
 # ============================================================
 # 历史记录
