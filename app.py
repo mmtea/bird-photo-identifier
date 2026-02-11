@@ -566,32 +566,35 @@ def identify_bird(image_base64: str, api_key: str, exif_info: dict) -> dict:
                             "- 50-59：较差，有明显缺陷\n"
                             "- 50以下：质量很差\n"
                             "大多数普通照片应在 55-75 分之间，不要轻易给高分！\n\n"
-                            "只返回一个 JSON 对象，不要返回其他内容：\n"
+                            "只返回一个 JSON 对象，不要返回其他内容。\n"
+                            "【重要】下面是 JSON 格式模板，其中的数值仅为格式示意，"
+                            "你必须根据实际照片独立评判每个分项，严禁照抄模板中的数值！\n"
                             "{\n"
-                            '  "chinese_name": "中文种名",\n'
-                            '  "english_name": "英文种名",\n'
-                            '  "order_chinese": "目的中文名",\n'
-                            '  "order_english": "目的英文名",\n'
-                            '  "family_chinese": "科的中文名",\n'
-                            '  "family_english": "科的英文名",\n'
-                            '  "confidence": "high/medium/low",\n'
-                            '  "identification_basis": "识别依据（20字以内，说明通过哪些外观特征识别）",\n'
-                            '  "bird_description": "该鸟种的详细介绍（100-150字），包括：外形特点（体长、羽色、显著特征）、生活习性（食性、活动规律、叫声特点）、栖息生境（偏好的生态环境类型）、全球分布范围（繁殖地、越冬地、迁徙路线）、在中国的分布和常见程度",\n'
-                            '  "score": 72,\n'
-                            '  "score_sharpness": 15,\n'
-                            '  "score_composition": 14,\n'
-                            '  "score_lighting": 13,\n'
-                            '  "score_background": 10,\n'
-                            '  "score_pose": 12,\n'
-                            '  "score_artistry": 8,\n'
-                            '  "score_comment": "一句话点评照片的最大亮点和最大不足（30字以内）"\n'
+                            '  "chinese_name": "填写实际识别的中文种名",\n'
+                            '  "english_name": "填写实际识别的英文种名",\n'
+                            '  "order_chinese": "填写实际的目中文名",\n'
+                            '  "order_english": "填写实际的目英文名",\n'
+                            '  "family_chinese": "填写实际的科中文名",\n'
+                            '  "family_english": "填写实际的科英文名",\n'
+                            '  "confidence": "根据实际判断填 high/medium/low",\n'
+                            '  "identification_basis": "根据实际观察填写识别依据（20字以内）",\n'
+                            '  "bird_description": "根据识别出的鸟种填写详细介绍（100-150字），包括外形特点、生活习性、栖息生境、全球分布、在中国的常见程度",\n'
+                            '  "score": 0,\n'
+                            '  "score_sharpness": 0,\n'
+                            '  "score_composition": 0,\n'
+                            '  "score_lighting": 0,\n'
+                            '  "score_background": 0,\n'
+                            '  "score_pose": 0,\n'
+                            '  "score_artistry": 0,\n'
+                            '  "score_comment": "根据实际照片填写点评（30字以内）"\n'
                             "}\n\n"
                             "要求：\n"
                             "1. 必须精确到具体鸟种，目和科使用正确分类学名称\n"
                             "2. 如果无法识别，chinese_name 填 \"未知鸟类\"\n"
-                            "3. score 必须等于6个分项之和，严格按标准打分\n"
-                            "4. 每个分项必须独立评判，不要所有分项都给相近的分数\n"
-                            "5. bird_description 必须是专业准确的鸟类学知识，内容丰富有趣"
+                            "3. score 必须等于6个分项之和\n"
+                            "4. 每个分项必须根据照片实际情况独立评判，不同照片的分数应有明显差异\n"
+                            "5. 严禁所有分项都给相同或相近的分数，必须体现照片各维度的真实差异\n"
+                            "6. bird_description 必须是专业准确的鸟类学知识，内容丰富有趣"
                             f"{context_block}"
                         ),
                     },
