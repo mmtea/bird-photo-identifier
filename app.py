@@ -926,10 +926,26 @@ def fetch_user_history(supabase_client, user_nickname: str, limit: int = 50) -> 
 
 def delete_record_from_db(record_id: int) -> bool:
     """从数据库中删除一条识别记录"""
+    base_url, api_key = _supabase_config()
+    if not base_url or not api_key:
+        return False
     try:
-        params = f"id=eq.{record_id}"
-        _supabase_request("DELETE", "bird_records", params=params)
-        return True
+        url = f"{base_url}/rest/v1/bird_records?id=eq.{record_id}"
+        headers = {
+            "apikey": api_key,
+            "Authorization": f"Bearer {api_key}",
+        }
+        req = urllib.request.Request(url, headers=headers, method="DELETE")
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            return resp.status in (200, 204)
+    except urllib.error.HTTPError as http_err:
+        error_body = ""
+        try:
+            error_body = http_err.read().decode("utf-8")
+        except Exception:
+            pass
+        st.toast(f"⚠️ 删除失败: {http_err.code} {error_body[:80]}", icon="⚠️")
+        return False
     except Exception:
         return False
 
@@ -1530,17 +1546,32 @@ if supabase_client and user_nickname:
                             except Exception:
                                 pass
 
-                        # 删除按钮
+                        # 删除按钮（两步确认）
                         record_id = record.get("id")
                         if record_id:
-                            if st.button("🗑️", key=f"del_{record_id}",
-                                         help="删除这条记录",
-                                         use_container_width=True):
-                                if delete_record_from_db(record_id):
-                                    st.toast("✅ 已删除", icon="✅")
+                            confirm_key = f"confirm_del_{record_id}"
+                            if st.session_state.get(confirm_key):
+                                col_yes, col_no = st.columns(2)
+                                with col_yes:
+                                    if st.button("确认", key=f"yes_{record_id}",
+                                                 type="primary", use_container_width=True):
+                                        if delete_record_from_db(record_id):
+                                            st.session_state.pop(confirm_key, None)
+                                            st.toast("✅ 已删除", icon="✅")
+                                            st.rerun()
+                                        else:
+                                            st.toast("⚠️ 删除失败", icon="⚠️")
+                                with col_no:
+                                    if st.button("取消", key=f"no_{record_id}",
+                                                 use_container_width=True):
+                                        st.session_state.pop(confirm_key, None)
+                                        st.rerun()
+                            else:
+                                if st.button("🗑️", key=f"del_{record_id}",
+                                             help="删除这条记录",
+                                             use_container_width=True):
+                                    st.session_state[confirm_key] = True
                                     st.rerun()
-                                else:
-                                    st.toast("⚠️ 删除失败", icon="⚠️")
     else:
         st.markdown(
             '<p style="text-align:center; color:#86868b; font-size:14px; padding:20px 0;">'
