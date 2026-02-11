@@ -78,12 +78,10 @@ st.set_page_config(
 # ============================================================
 st.markdown("""
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-
     /* 全局字体和背景 */
     html, body, [class*="css"] {
-        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Display',
-                     'SF Pro Text', 'Helvetica Neue', Arial, sans-serif;
+        font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display',
+                     'SF Pro Text', 'Helvetica Neue', 'Inter', Arial, sans-serif;
         -webkit-font-smoothing: antialiased;
     }
     .stApp {
@@ -94,25 +92,29 @@ st.markdown("""
     #MainMenu, footer, header { visibility: hidden; }
     .stDeployButton { display: none; }
 
-    /* 主标题区域 */
+    /* 减少顶部空白 */
+    .block-container {
+        padding-top: 1rem !important;
+    }
+
+    /* 主标题区域 - 紧凑竖向 */
     .hero-section {
-        text-align: left;
-        padding: 2rem 2rem 1.5rem;
+        text-align: center;
+        padding: 1.5rem 1rem;
         position: relative;
         overflow: hidden;
-        border-radius: 20px;
+        border-radius: 16px;
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        margin-bottom: 4px;
-        min-height: 200px;
+        margin-bottom: 0;
     }
     .hero-icon {
-        font-size: 48px;
-        margin-bottom: 8px;
+        font-size: 40px;
+        margin-bottom: 6px;
         display: block;
         filter: drop-shadow(0 4px 12px rgba(0,0,0,0.2));
     }
     .hero-title {
-        font-size: 36px;
+        font-size: 28px;
         font-weight: 700;
         letter-spacing: -0.03em;
         color: #ffffff;
@@ -120,26 +122,27 @@ st.markdown("""
         line-height: 1.1;
     }
     .hero-subtitle {
-        font-size: 14px;
+        font-size: 11px;
         font-weight: 400;
-        color: rgba(255,255,255,0.8);
-        margin-top: 6px;
+        color: rgba(255,255,255,0.75);
+        margin-top: 4px;
         letter-spacing: -0.01em;
     }
     .hero-features {
-        margin-top: 16px;
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 8px;
+        margin-top: 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
     }
     .hero-feature-item {
-        font-size: 12px;
+        font-size: 11px;
         color: rgba(255,255,255,0.9);
-        padding: 6px 10px;
+        padding: 5px 8px;
         background: rgba(255,255,255,0.15);
         backdrop-filter: blur(10px);
         border-radius: 8px;
         letter-spacing: -0.01em;
+        text-align: left;
     }
 
     /* 登录卡片 */
@@ -157,6 +160,76 @@ st.markdown("""
         font-size: 14px;
         color: #86868b;
         margin: 0;
+    }
+
+    /* 排行榜区域 - 与 hero 同色系 */
+    .leaderboard-header {
+        text-align: center;
+        padding: 12px;
+        border-radius: 16px 16px 0 0;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        margin-bottom: 0;
+    }
+    .leaderboard-header-title {
+        font-size: 16px;
+        font-weight: 700;
+        color: #ffffff;
+        margin: 0;
+    }
+    .leaderboard-body {
+        background: rgba(255,255,255,0.85);
+        backdrop-filter: blur(20px);
+        border: 1px solid rgba(0,0,0,0.06);
+        border-top: none;
+        border-radius: 0 0 16px 16px;
+        padding: 8px;
+    }
+    .leaderboard-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 10px;
+        border-radius: 10px;
+        margin-bottom: 4px;
+        transition: background 0.2s;
+    }
+    .leaderboard-item:hover {
+        background: rgba(0,0,0,0.03);
+    }
+    .leaderboard-item-current {
+        background: rgba(102,126,234,0.08);
+        border: 1.5px solid rgba(102,126,234,0.25);
+    }
+    .leaderboard-rank {
+        font-size: 16px;
+        width: 24px;
+        text-align: center;
+        flex-shrink: 0;
+    }
+    .leaderboard-rank-num {
+        font-size: 12px;
+        color: #86868b;
+        font-weight: 600;
+        width: 24px;
+        text-align: center;
+        flex-shrink: 0;
+    }
+    .leaderboard-name {
+        font-size: 13px;
+        font-weight: 600;
+        color: #1d1d1f;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        margin: 0;
+    }
+    .leaderboard-name-current {
+        color: #667eea;
+    }
+    .leaderboard-stats {
+        font-size: 10px;
+        color: #86868b;
+        margin: 1px 0 0;
     }
 
     /* 毛玻璃卡片 */
@@ -921,9 +994,10 @@ def save_record_to_db(supabase_client, user_nickname: str, result: dict,
         return False
 
 
-def fetch_user_history(supabase_client, user_nickname: str, limit: int = 50) -> list:
-    """查询用户的历史识别记录"""
-    if not supabase_client:
+@st.cache_data(ttl=30, show_spinner=False)
+def fetch_user_history(_supabase_client, user_nickname: str, limit: int = 50) -> list:
+    """查询用户的历史识别记录（缓存 30 秒）"""
+    if not _supabase_client:
         return []
     try:
         encoded_nickname = urllib.parse.quote(user_nickname)
@@ -931,7 +1005,7 @@ def fetch_user_history(supabase_client, user_nickname: str, limit: int = 50) -> 
             f"user_nickname=eq.{encoded_nickname}"
             f"&order=created_at.desc"
             f"&limit={limit}"
-            f"&select=*"
+            f"&select=id,chinese_name,score,created_at,thumbnail_base64"
         )
         result = _supabase_request("GET", "bird_records", params=params)
         return result if isinstance(result, list) else []
@@ -969,35 +1043,27 @@ def delete_record_from_db(record_id: int) -> bool:
         return False
 
 
-def fetch_user_stats(supabase_client, user_nickname: str) -> dict:
-    """查询用户的统计数据"""
-    if not supabase_client:
-        return {}
-    try:
-        encoded_nickname = urllib.parse.quote(user_nickname)
-        params = f"user_nickname=eq.{encoded_nickname}&select=chinese_name,score"
-        result = _supabase_request("GET", "bird_records", params=params)
-        records = result if isinstance(result, list) else []
-        if not records:
-            return {"total": 0, "species": 0, "avg_score": 0, "best_score": 0}
-        species_set = set(r["chinese_name"] for r in records if r.get("chinese_name"))
-        scores = [r["score"] for r in records if r.get("score")]
-        avg_score = sum(scores) / len(scores) if scores else 0
-        best_score = max(scores) if scores else 0
-        return {
-            "total": len(records),
-            "species": len(species_set),
-            "avg_score": round(avg_score, 1),
-            "best_score": best_score,
-        }
-    except Exception:
+def fetch_user_stats_from_records(records: list) -> dict:
+    """从已有的历史记录中计算统计数据（避免额外的数据库请求）"""
+    if not records:
         return {"total": 0, "species": 0, "avg_score": 0, "best_score": 0}
+    species_set = set(r["chinese_name"] for r in records if r.get("chinese_name"))
+    scores = [r["score"] for r in records if r.get("score")]
+    avg_score = sum(scores) / len(scores) if scores else 0
+    best_score = max(scores) if scores else 0
+    return {
+        "total": len(records),
+        "species": len(species_set),
+        "avg_score": round(avg_score, 1),
+        "best_score": best_score,
+    }
 
 
+@st.cache_data(ttl=60, show_spinner=False)
 def fetch_leaderboard(limit: int = 20) -> list:
-    """查询所有用户的排行榜数据，按鸟种数降序排列"""
+    """查询所有用户的排行榜数据，按鸟种数降序排列（缓存 60 秒）"""
     try:
-        params = "select=user_nickname,chinese_name,score"
+        params = "select=user_nickname,chinese_name,score&limit=2000"
         result = _supabase_request("GET", "bird_records", params=params)
         records = result if isinstance(result, list) else []
         if not records:
@@ -1147,7 +1213,7 @@ if "user_nickname" not in st.session_state:
 # ============================================================
 # 顶部区域：左边 Logo+介绍 | 右边 登录+上传
 # ============================================================
-hero_left, hero_right = st.columns([5, 4], gap="large")
+hero_left, hero_right = st.columns([1, 3], gap="medium")
 
 with hero_left:
     st.markdown("""
@@ -1313,6 +1379,9 @@ if uploaded_files and api_key:
                 if not saved:
                     st.toast(f"⚠️ {uploaded_file.name} 保存到云端失败", icon="⚠️")
 
+        # 新增记录后清除缓存，确保历史记录和排行榜刷新
+        fetch_user_history.clear()
+        fetch_leaderboard.clear()
         progress_bar.progress(1.0, text=f"✅ 新增 {len(new_files)} 张识别完成！")
 
     # 按当前上传文件的顺序，从缓存中组装完整结果列表
@@ -1555,19 +1624,23 @@ if supabase_client and user_nickname:
     if pending_delete_key in st.session_state:
         delete_id = st.session_state.pop(pending_delete_key)
         if delete_record_from_db(delete_id):
+            # 清除缓存，确保下次查询拿到最新数据
+            fetch_user_history.clear()
+            fetch_leaderboard.clear()
             st.toast("✅ 已删除", icon="✅")
         else:
             st.toast("⚠️ 删除失败，请检查数据库权限", icon="⚠️")
 
-    # 左右两栏布局：左边观鸟记录，右边排行榜
-    history_col, leaderboard_col = st.columns([3, 1], gap="large")
+    # 左右两栏布局：左边排行榜，右边观鸟记录
+    leaderboard_col, history_col = st.columns([1, 3], gap="medium")
 
-    # ---- 左栏：我的观鸟记录 ----
+    # ---- 右栏：我的观鸟记录 ----
     with history_col:
         st.markdown('<p class="section-title">📚 我的观鸟记录</p>', unsafe_allow_html=True)
 
-        # 用户统计概览（在删除处理之后，确保数字是最新的）
-        user_stats = fetch_user_stats(supabase_client, user_nickname)
+        # 先查历史记录（一次请求），再从中计算统计数据（省掉一次请求）
+        history_records = fetch_user_history(supabase_client, user_nickname)
+        user_stats = fetch_user_stats_from_records(history_records)
         if user_stats and user_stats.get("total", 0) > 0:
             hist_stat_cols = st.columns(4, gap="medium")
             hist_stat_data = [
@@ -1588,8 +1661,7 @@ if supabase_client and user_nickname:
 
             st.markdown("<br>", unsafe_allow_html=True)
 
-        # 历史记录列表
-        history_records = fetch_user_history(supabase_client, user_nickname)
+        # 历史记录列表（已在上方查询过）
         if history_records:
             with st.expander(f"查看全部历史记录（{len(history_records)} 条）", expanded=True):
                 for row_start in range(0, len(history_records), 4):
@@ -1597,20 +1669,15 @@ if supabase_client and user_nickname:
                     hist_cols = st.columns(4)
                     for col_idx, record in enumerate(row_items):
                         with hist_cols[col_idx]:
-                            # 缩略图
+                            # 缩略图（直接用 HTML img 渲染 base64，避免 st.image 开销）
                             thumb_b64 = record.get("thumbnail_base64", "")
                             if thumb_b64:
-                                try:
-                                    thumb_bytes = base64.b64decode(thumb_b64)
-                                    thumb_img = Image.open(io.BytesIO(thumb_bytes))
-                                    st.image(thumb_img, use_container_width=True)
-                                except Exception:
-                                    st.markdown(
-                                        '<div style="height:80px; background:rgba(0,0,0,0.04); '
-                                        'border-radius:10px; display:flex; align-items:center; '
-                                        'justify-content:center; color:#86868b; font-size:20px;">🐦</div>',
-                                        unsafe_allow_html=True,
-                                    )
+                                st.markdown(
+                                    f'<img src="data:image/jpeg;base64,{thumb_b64}" '
+                                    f'style="width:100%; border-radius:10px; aspect-ratio:4/3; object-fit:cover;" '
+                                    f'loading="lazy" alt="bird">',
+                                    unsafe_allow_html=True,
+                                )
                             else:
                                 st.markdown(
                                     '<div style="height:80px; background:rgba(0,0,0,0.04); '
@@ -1659,49 +1726,54 @@ if supabase_client and user_nickname:
                 unsafe_allow_html=True,
             )
 
-    # ---- 右栏：观鸟排行榜 ----
+    # ---- 左栏：观鸟排行榜 ----
     with leaderboard_col:
-        st.markdown('<p class="section-title">🏆 观鸟排行榜</p>', unsafe_allow_html=True)
+        # 排行榜头部（与 hero 同色系渐变）
+        st.markdown(
+            '<div class="leaderboard-header">'
+            '<p class="leaderboard-header-title">🏆 排行榜</p>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
 
         leaderboard = fetch_leaderboard()
         if leaderboard:
+            items_html = ""
             for rank, entry in enumerate(leaderboard, 1):
-                # 前三名用奖牌 emoji
                 if rank == 1:
-                    rank_display = "🥇"
+                    rank_html = '<span class="leaderboard-rank">🥇</span>'
                 elif rank == 2:
-                    rank_display = "🥈"
+                    rank_html = '<span class="leaderboard-rank">🥈</span>'
                 elif rank == 3:
-                    rank_display = "🥉"
+                    rank_html = '<span class="leaderboard-rank">🥉</span>'
                 else:
-                    rank_display = f"<span style='display:inline-block;width:20px;text-align:center;font-size:13px;color:#86868b;'>{rank}</span>"
+                    rank_html = f'<span class="leaderboard-rank-num">{rank}</span>'
 
-                # 当前用户高亮
                 is_current_user = entry["nickname"] == user_nickname
-                bg_color = "rgba(0,122,255,0.08)" if is_current_user else "rgba(0,0,0,0.02)"
-                border = "2px solid rgba(0,122,255,0.3)" if is_current_user else "1px solid rgba(0,0,0,0.06)"
-                name_color = "#007aff" if is_current_user else "#1d1d1f"
+                item_class = "leaderboard-item leaderboard-item-current" if is_current_user else "leaderboard-item"
+                name_class = "leaderboard-name leaderboard-name-current" if is_current_user else "leaderboard-name"
 
-                st.markdown(
-                    f'<div style="background:{bg_color}; border:{border}; border-radius:12px; '
-                    f'padding:10px 12px; margin-bottom:8px;">'
-                    f'<div style="display:flex; align-items:center; gap:8px;">'
-                    f'{rank_display}'
-                    f'<div style="flex:1; min-width:0;">'
-                    f'<p style="font-size:14px; font-weight:600; color:{name_color}; '
-                    f'margin:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">'
-                    f'{entry["nickname"]}</p>'
-                    f'<p style="font-size:11px; color:#86868b; margin:2px 0 0;">'
+                items_html += (
+                    f'<div class="{item_class}">'
+                    f'{rank_html}'
+                    f'<div style="flex:1;min-width:0;">'
+                    f'<p class="{name_class}">{entry["nickname"]}</p>'
+                    f'<p class="leaderboard-stats">'
                     f'🐦 {entry["species"]}种 · 📷 {entry["total"]}张 · ⭐ {entry["avg_score"]}</p>'
                     f'</div>'
                     f'</div>'
-                    f'</div>',
-                    unsafe_allow_html=True,
                 )
+
+            st.markdown(
+                f'<div class="leaderboard-body">{items_html}</div>',
+                unsafe_allow_html=True,
+            )
         else:
             st.markdown(
+                '<div class="leaderboard-body">'
                 '<p style="text-align:center; color:#86868b; font-size:13px; padding:20px 0;">'
-                '暂无排行数据</p>',
+                '暂无排行数据</p>'
+                '</div>',
                 unsafe_allow_html=True,
             )
 
