@@ -843,8 +843,8 @@ def get_supabase_client():
 
 
 def generate_thumbnail_base64(image_bytes: bytes, filename: str = "",
-                              bird_bbox: list = None, max_width: int = 200) -> str:
-    """生成缩略图的 base64 字符串（聚焦到鸟，压缩到 200px 宽）"""
+                              bird_bbox: list = None, max_width: int = 480) -> str:
+    """生成缩略图的 base64 字符串（聚焦到鸟，压缩到 480px 宽）"""
     img = image_bytes_to_pil(image_bytes, filename)
     if img is None:
         return ""
@@ -859,7 +859,7 @@ def generate_thumbnail_base64(image_bytes: bytes, filename: str = "",
             new_size = (max_width, int(height * ratio))
             img = img.resize(new_size, Image.LANCZOS)
         buffer = io.BytesIO()
-        img.save(buffer, format="JPEG", quality=60)
+        img.save(buffer, format="JPEG", quality=80)
         return base64.b64encode(buffer.getvalue()).decode("utf-8")
     except Exception:
         return ""
