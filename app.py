@@ -472,26 +472,47 @@ def identify_bird(image_base64: str, api_key: str, exif_info: dict) -> dict:
         base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
     )
 
-    # 构建季节辅助信息
+    # 构建地理位置和季节辅助信息
     context_block = ""
+    season = ""
+    location_name = exif_info.get("geocoded_location", "")
+
     if exif_info.get("shoot_time"):
         raw_time = exif_info["shoot_time"]
         month_str = raw_time[4:6] if len(raw_time) >= 6 else ""
         if month_str:
             month = int(month_str)
             if month in (3, 4, 5):
-                season = "春季（春迁期）"
+                season = "春季（春迁期，3-5月）"
             elif month in (6, 7, 8):
-                season = "夏季（繁殖期）"
+                season = "夏季（繁殖期，6-8月）"
             elif month in (9, 10, 11):
-                season = "秋季（秋迁期）"
+                season = "秋季（秋迁期，9-11月）"
             else:
-                season = "冬季（越冬期）"
-            context_block = f"\n\n【辅助信息】拍摄时间：{raw_time}，季节：{season}"
+                season = "冬季（越冬期，12-2月）"
 
-    if exif_info.get("gps_lat") and exif_info.get("gps_lon"):
-        context_block += f"\nGPS 坐标：纬度 {exif_info['gps_lat']:.4f}，经度 {exif_info['gps_lon']:.4f}"
-        context_block += "\n请结合该地区该季节的鸟种分布辅助判断。"
+    # 构建详细的地理+季节约束
+    if location_name or season or (exif_info.get("gps_lat") and exif_info.get("gps_lon")):
+        context_block = "\n\n【关键约束 - 必须结合以下信息缩小候选鸟种范围】\n"
+        if location_name:
+            context_block += f"拍摄地点：{location_name}\n"
+        if exif_info.get("gps_lat") and exif_info.get("gps_lon"):
+            context_block += f"GPS坐标：北纬{abs(exif_info['gps_lat']):.4f}°，东经{abs(exif_info['gps_lon']):.4f}°\n"
+        if exif_info.get("shoot_time"):
+            context_block += f"拍摄时间：{exif_info['shoot_time']}\n"
+        if season:
+            context_block += f"季节：{season}\n"
+        context_block += (
+            "\n你必须严格按照以下逻辑进行识别：\n"
+            "1. 先根据外形特征初步判断可能的鸟种（列出2-3个候选种）\n"
+            "2. 然后逐一检查每个候选种在该地区、该季节是否有分布记录\n"
+            "3. 排除在该地区该季节不可能出现的鸟种\n"
+            "4. 从剩余候选种中选择最匹配的\n"
+            "例如：如果拍摄于冬季的杭州，则排除仅在东北繁殖且不在华东越冬的鸟种；"
+            "如果拍摄于夏季的北京，则排除仅在南方分布的留鸟。\n"
+            "候鸟的季节性分布尤其重要：夏候鸟只在繁殖季出现，冬候鸟只在越冬季出现，"
+            "旅鸟只在迁徙季短暂停留。"
+        )
 
     response = client.chat.completions.create(
         model="qwen-vl-max",
@@ -812,6 +833,12 @@ if uploaded_files and api_key:
 
             # 提取 EXIF
             exif_info = extract_exif_info(image_bytes)
+
+            # 逆地理编码：将 GPS 坐标转换为地名，帮助 AI 更准确识别
+            if exif_info.get("gps_lat") and exif_info.get("gps_lon"):
+                geocoded_location = reverse_geocode(exif_info["gps_lat"], exif_info["gps_lon"])
+                if geocoded_location:
+                    exif_info["geocoded_location"] = geocoded_location
 
             # AI 识别
             image_base64 = encode_image_to_base64(image_bytes)
