@@ -94,56 +94,69 @@ st.markdown("""
     #MainMenu, footer, header { visibility: hidden; }
     .stDeployButton { display: none; }
 
-    /* 主标题区域 - 左文字右猛禽 */
+    /* 主标题区域 */
     .hero-section {
         text-align: left;
-        padding: 2rem 3rem 1.5rem;
+        padding: 2rem 2rem 1.5rem;
         position: relative;
         overflow: hidden;
-        border-radius: 0 0 32px 32px;
-        background: linear-gradient(135deg, #f5f5f7 0%, #e8e8ed 50%, rgba(200,200,210,0.6) 100%);
+        border-radius: 20px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         margin-bottom: 4px;
-        min-height: 160px;
-    }
-    .hero-section::after {
-        content: '';
-        position: absolute;
-        right: -20px;
-        top: 50%;
-        transform: translateY(-50%);
-        width: 300px;
-        height: 300px;
-        background: url('https://images.unsplash.com/photo-1611689342806-0f0e9395e0e1?w=800&q=80') center/cover no-repeat;
-        border-radius: 50%;
-        opacity: 0.35;
-        mask-image: radial-gradient(circle, black 40%, transparent 75%);
-        -webkit-mask-image: radial-gradient(circle, black 40%, transparent 75%);
-        pointer-events: none;
+        min-height: 200px;
     }
     .hero-icon {
-        font-size: 56px;
-        margin-bottom: 4px;
+        font-size: 48px;
+        margin-bottom: 8px;
         display: block;
-        filter: drop-shadow(0 4px 12px rgba(0,0,0,0.15));
+        filter: drop-shadow(0 4px 12px rgba(0,0,0,0.2));
     }
     .hero-title {
-        font-size: 42px;
+        font-size: 36px;
         font-weight: 700;
         letter-spacing: -0.03em;
-        color: #1d1d1f;
+        color: #ffffff;
         margin: 0;
         line-height: 1.1;
-        position: relative;
-        z-index: 1;
     }
     .hero-subtitle {
-        font-size: 16px;
+        font-size: 14px;
         font-weight: 400;
-        color: #6e6e73;
+        color: rgba(255,255,255,0.8);
         margin-top: 6px;
         letter-spacing: -0.01em;
-        position: relative;
-        z-index: 1;
+    }
+    .hero-features {
+        margin-top: 16px;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+    }
+    .hero-feature-item {
+        font-size: 12px;
+        color: rgba(255,255,255,0.9);
+        padding: 6px 10px;
+        background: rgba(255,255,255,0.15);
+        backdrop-filter: blur(10px);
+        border-radius: 8px;
+        letter-spacing: -0.01em;
+    }
+
+    /* 登录卡片 */
+    .login-card {
+        text-align: center;
+        padding: 16px 0 8px;
+    }
+    .login-title {
+        font-size: 20px;
+        font-weight: 700;
+        color: #1d1d1f;
+        margin: 0 0 4px;
+    }
+    .login-subtitle {
+        font-size: 14px;
+        color: #86868b;
+        margin: 0;
     }
 
     /* 毛玻璃卡片 */
@@ -389,10 +402,12 @@ st.markdown("""
     /* 页脚 */
     .app-footer {
         text-align: center;
-        padding: 12px 0 8px;
+        padding: 24px 0 12px;
         color: #86868b;
         font-size: 13px;
         letter-spacing: -0.01em;
+        border-top: 1px solid rgba(0,0,0,0.06);
+        margin-top: 24px;
     }
     .app-footer a {
         color: #007aff;
@@ -1106,17 +1121,6 @@ def create_organized_zip(results_with_bytes: list) -> bytes:
 
 
 # ============================================================
-# 主界面 - Hero Section
-# ============================================================
-st.markdown("""
-<div class="hero-section">
-    <span class="hero-icon">🦅</span>
-    <h1 class="hero-title">影禽</h1>
-    <p class="hero-subtitle">BirdEye · 智能鸟类识别 · 摄影评分 · 分类整理</p>
-</div>
-""", unsafe_allow_html=True)
-
-# ============================================================
 # API Key & Supabase 初始化
 # ============================================================
 MAX_PHOTOS_PER_SESSION = 10
@@ -1134,19 +1138,39 @@ if not api_key:
 supabase_client = get_supabase_client()
 
 # ============================================================
-# 用户昵称（简单身份标识，用于关联历史记录）
+# 用户昵称 session 初始化（从 URL 参数恢复）
 # ============================================================
-# 从 URL 参数恢复昵称（浏览器刷新后保持登录）
 if "user_nickname" not in st.session_state:
     saved_nick = st.query_params.get("nick", "")
     st.session_state["user_nickname"] = saved_nick
 
-nickname_col_left, nickname_col_center, nickname_col_right = st.columns([1, 2, 1])
-with nickname_col_center:
+# ============================================================
+# 顶部区域：左边 Logo+介绍 | 右边 登录+上传
+# ============================================================
+hero_left, hero_right = st.columns([5, 4], gap="large")
+
+with hero_left:
+    st.markdown("""
+    <div class="hero-section">
+        <span class="hero-icon">🦅</span>
+        <h1 class="hero-title">影禽</h1>
+        <p class="hero-subtitle">BirdEye · AI 鸟类识别与摄影评分平台</p>
+        <div class="hero-features">
+            <div class="hero-feature-item">🔍 <b>智能识别</b> 覆盖中国 1400+ 鸟种</div>
+            <div class="hero-feature-item">📸 <b>专业评分</b> 六维度摄影评价体系</div>
+            <div class="hero-feature-item">📂 <b>自动整理</b> 按目/科分类归档照片</div>
+            <div class="hero-feature-item">☁️ <b>云端记录</b> 永久保存你的观鸟足迹</div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+with hero_right:
+    # 用户登录区
     if not st.session_state["user_nickname"]:
         st.markdown(
-            '<div style="text-align:center; margin:8px 0 4px;">'
-            '<span style="font-size:15px; color:#6e6e73;">👋 输入昵称，开启你的观鸟记录</span>'
+            '<div class="login-card">'
+            '<p class="login-title">👋 欢迎来到影禽</p>'
+            '<p class="login-subtitle">输入昵称，开启你的观鸟之旅</p>'
             '</div>',
             unsafe_allow_html=True,
         )
@@ -1164,18 +1188,18 @@ with nickname_col_center:
             st.stop()
     else:
         nickname_display = st.session_state["user_nickname"]
-        # 确保 URL 参数同步
         if st.query_params.get("nick", "") != nickname_display:
             st.query_params["nick"] = nickname_display
+
         col_greeting, col_switch = st.columns([3, 1])
         with col_greeting:
             st.markdown(
-                f'<p style="font-size:14px; color:#86868b; margin:4px 0;">'
-                f'🐦 <b style="color:#1d1d1f;">{nickname_display}</b> 的观鸟记录</p>',
+                f'<p style="font-size:15px; color:#86868b; margin:8px 0 4px;">'
+                f'🐦 <b style="color:#1d1d1f; font-size:17px;">{nickname_display}</b></p>',
                 unsafe_allow_html=True,
             )
         with col_switch:
-            if st.button("切换用户", type="secondary", use_container_width=True):
+            if st.button("切换", type="secondary", use_container_width=True):
                 st.session_state["user_nickname"] = ""
                 st.query_params.pop("nick", None)
                 st.session_state.pop("identified_cache", None)
@@ -1183,35 +1207,36 @@ with nickname_col_center:
                 st.session_state.pop("zip_bytes", None)
                 st.rerun()
 
+        # 上传区域（紧跟在登录下方）
+        st.markdown(
+            f'<p class="section-subtitle" style="margin-top:8px;">'
+            f'支持 JPG、PNG、RAW 等格式，每次最多 {MAX_PHOTOS_PER_SESSION} 张</p>',
+            unsafe_allow_html=True,
+        )
+
+        uploaded_files = st.file_uploader(
+            "拖拽照片到此处，或点击选择文件",
+            type=["jpg", "jpeg", "png", "tif", "tiff", "heic", "bmp", "webp",
+                  "arw", "cr2", "cr3", "nef", "nrw", "dng", "raf", "orf", "rw2", "pef", "srw"],
+            accept_multiple_files=True,
+            label_visibility="collapsed",
+        )
+
+        if uploaded_files:
+            if len(uploaded_files) > MAX_PHOTOS_PER_SESSION:
+                st.warning(f"每次最多 {MAX_PHOTOS_PER_SESSION} 张，已自动截取。")
+                uploaded_files = uploaded_files[:MAX_PHOTOS_PER_SESSION]
+            st.markdown(
+                f'<p style="font-size:14px; color:#86868b; margin:4px 0;">已选择 '
+                f'<b style="color:#1d1d1f;">{len(uploaded_files)}</b> 张照片</p>',
+                unsafe_allow_html=True,
+            )
+
 user_nickname = st.session_state["user_nickname"]
 
-# ============================================================
-# 上传区域
-# ============================================================
-st.markdown('<p class="section-title">上传照片</p>', unsafe_allow_html=True)
-st.markdown(
-    f'<p class="section-subtitle">支持 JPG、PNG、HEIC、TIFF、BMP、WebP 及 RAW 格式（ARW/CR2/NEF/DNG 等），每次最多 {MAX_PHOTOS_PER_SESSION} 张</p>',
-    unsafe_allow_html=True,
-)
-
-uploaded_files = st.file_uploader(
-    "拖拽照片到此处，或点击选择文件",
-    type=["jpg", "jpeg", "png", "tif", "tiff", "heic", "bmp", "webp",
-          "arw", "cr2", "cr3", "nef", "nrw", "dng", "raf", "orf", "rw2", "pef", "srw"],
-    accept_multiple_files=True,
-    label_visibility="collapsed",
-)
-
-if uploaded_files:
-    if len(uploaded_files) > MAX_PHOTOS_PER_SESSION:
-        st.warning(f"每次最多识别 {MAX_PHOTOS_PER_SESSION} 张照片，已自动截取前 {MAX_PHOTOS_PER_SESSION} 张。")
-        uploaded_files = uploaded_files[:MAX_PHOTOS_PER_SESSION]
-
-    st.markdown(
-        f'<p style="font-size:15px; color:#86868b; margin:8px 0 16px;">已选择 <b style="color:#1d1d1f;">'
-        f'{len(uploaded_files)}</b> 张照片，上传完成后将自动开始识别</p>',
-        unsafe_allow_html=True,
-    )
+# 未登录时 uploaded_files 不存在，初始化为空
+if "uploaded_files" not in dir():
+    uploaded_files = None
 
 # ============================================================
 # 上传后自动识别
