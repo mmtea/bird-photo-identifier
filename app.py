@@ -50,13 +50,13 @@ st.markdown("""
     /* 主标题区域 - 左文字右猛禽 */
     .hero-section {
         text-align: left;
-        padding: 4rem 3rem 3rem;
+        padding: 2rem 3rem 1.5rem;
         position: relative;
         overflow: hidden;
         border-radius: 0 0 32px 32px;
         background: linear-gradient(135deg, #f5f5f7 0%, #e8e8ed 50%, rgba(200,200,210,0.6) 100%);
-        margin-bottom: 8px;
-        min-height: 240px;
+        margin-bottom: 4px;
+        min-height: 160px;
     }
     .hero-section::after {
         content: '';
@@ -64,8 +64,8 @@ st.markdown("""
         right: -20px;
         top: 50%;
         transform: translateY(-50%);
-        width: 420px;
-        height: 420px;
+        width: 300px;
+        height: 300px;
         background: url('https://images.unsplash.com/photo-1611689342806-0f0e9395e0e1?w=800&q=80') center/cover no-repeat;
         border-radius: 50%;
         opacity: 0.35;
@@ -74,13 +74,13 @@ st.markdown("""
         pointer-events: none;
     }
     .hero-icon {
-        font-size: 80px;
-        margin-bottom: 8px;
+        font-size: 56px;
+        margin-bottom: 4px;
         display: block;
         filter: drop-shadow(0 4px 12px rgba(0,0,0,0.15));
     }
     .hero-title {
-        font-size: 56px;
+        font-size: 42px;
         font-weight: 700;
         letter-spacing: -0.03em;
         color: #1d1d1f;
@@ -90,10 +90,10 @@ st.markdown("""
         z-index: 1;
     }
     .hero-subtitle {
-        font-size: 20px;
+        font-size: 16px;
         font-weight: 400;
         color: #6e6e73;
-        margin-top: 12px;
+        margin-top: 6px;
         letter-spacing: -0.01em;
         position: relative;
         z-index: 1;
@@ -120,12 +120,12 @@ st.markdown("""
         background: rgba(255, 255, 255, 0.8);
         backdrop-filter: blur(20px);
         border: 1px solid rgba(0, 0, 0, 0.06);
-        border-radius: 16px;
-        padding: 20px;
+        border-radius: 12px;
+        padding: 12px;
         text-align: center;
     }
     .stat-value {
-        font-size: 32px;
+        font-size: 26px;
         font-weight: 700;
         color: #1d1d1f;
         letter-spacing: -0.02em;
@@ -331,7 +331,7 @@ st.markdown("""
         border: none;
         height: 1px;
         background: rgba(0, 0, 0, 0.06);
-        margin: 24px 0;
+        margin: 10px 0;
     }
 
     /* 图片圆角 */
@@ -342,7 +342,7 @@ st.markdown("""
     /* 页脚 */
     .app-footer {
         text-align: center;
-        padding: 32px 0 16px;
+        padding: 12px 0 8px;
         color: #86868b;
         font-size: 13px;
         letter-spacing: -0.01em;
@@ -354,17 +354,17 @@ st.markdown("""
 
     /* Section 标题 */
     .section-title {
-        font-size: 28px;
+        font-size: 22px;
         font-weight: 700;
         color: #1d1d1f;
         letter-spacing: -0.02em;
-        margin: 32px 0 16px;
+        margin: 12px 0 8px;
     }
     .section-subtitle {
-        font-size: 15px;
+        font-size: 13px;
         color: #86868b;
-        margin-top: -8px;
-        margin-bottom: 20px;
+        margin-top: -4px;
+        margin-bottom: 10px;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -827,8 +827,15 @@ if "results_with_bytes" in st.session_state:
     results_with_bytes = st.session_state["results_with_bytes"]
     results = [item["result"] for item in results_with_bytes]
 
-    st.markdown("<br>", unsafe_allow_html=True)
+    st.markdown('<div id="results-anchor"></div>', unsafe_allow_html=True)
     st.markdown('<p class="section-title">识别结果</p>', unsafe_allow_html=True)
+
+    # 自动滚动到结果区域
+    import streamlit.components.v1 as components
+    components.html(
+        '<script>parent.document.getElementById("results-anchor").scrollIntoView({behavior:"smooth"});</script>',
+        height=0,
+    )
 
     # 汇总统计 - Apple 风格卡片
     scores = [r["score"] for r in results if r.get("score")]
