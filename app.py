@@ -930,23 +930,24 @@ def delete_record_from_db(record_id: int) -> bool:
     if not base_url or not api_key:
         return False
     try:
-        url = f"{base_url}/rest/v1/bird_records?id=eq.{record_id}"
+        import http.client
+        from urllib.parse import urlparse
+        parsed = urlparse(base_url)
+        conn = http.client.HTTPSConnection(parsed.hostname, timeout=15)
+        path = f"/rest/v1/bird_records?id=eq.{record_id}"
         headers = {
             "apikey": api_key,
             "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
             "Prefer": "return=minimal",
         }
-        req = urllib.request.Request(url, data=b"", headers=headers, method="DELETE")
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            return resp.status in (200, 204)
-    except urllib.error.HTTPError as http_err:
-        error_body = ""
-        try:
-            error_body = http_err.read().decode("utf-8")
-        except Exception:
-            pass
-        st.error(f"删除失败 ({http_err.code}): {error_body[:200]}")
+        conn.request("DELETE", path, body=None, headers=headers)
+        resp = conn.getresponse()
+        status = resp.status
+        body = resp.read().decode("utf-8", errors="replace")
+        conn.close()
+        if status in (200, 204):
+            return True
+        st.error(f"删除失败 ({status}): {body[:200]}")
         return False
     except Exception as exc:
         st.error(f"删除失败: {exc}")
@@ -1236,6 +1237,11 @@ if uploaded_files and api_key:
                 thumb_b64 = generate_thumbnail_base64(
                     image_bytes, uploaded_file.name, bird_bbox
                 )
+                if not thumb_b64:
+                    # bbox 裁剪失败时，尝试不裁剪直接生成缩略图
+                    thumb_b64 = generate_thumbnail_base64(
+                        image_bytes, uploaded_file.name, None
+                    )
                 saved = save_record_to_db(supabase_client, user_nickname, result, thumb_b64)
                 if not saved:
                     st.toast(f"⚠️ {uploaded_file.name} 保存到云端失败", icon="⚠️")
@@ -1500,10 +1506,19 @@ if supabase_client and user_nickname:
 
         st.markdown("<br>", unsafe_allow_html=True)
 
+    # 处理待删除的记录（在渲染前执行，避免 expander 收起）
+    pending_delete_key = "_pending_delete_record_id"
+    if pending_delete_key in st.session_state:
+        delete_id = st.session_state.pop(pending_delete_key)
+        if delete_record_from_db(delete_id):
+            st.toast("✅ 已删除", icon="✅")
+        else:
+            st.toast("⚠️ 删除失败，请检查数据库权限", icon="⚠️")
+
     # 历史记录列表
     history_records = fetch_user_history(supabase_client, user_nickname)
     if history_records:
-        with st.expander(f"查看全部历史记录（{len(history_records)} 条）", expanded=False):
+        with st.expander(f"查看全部历史记录（{len(history_records)} 条）", expanded=True):
             for row_start in range(0, len(history_records), 5):
                 row_items = history_records[row_start:row_start + 5]
                 hist_cols = st.columns(5)
@@ -1556,17 +1571,14 @@ if supabase_client and user_nickname:
                             except Exception:
                                 pass
 
-                        # 删除按钮
+                        # 删除按钮（点击后设置待删除 ID，下次 rerun 时执行删除）
                         record_id = record.get("id")
                         if record_id:
                             if st.button("🗑️", key=f"del_{record_id}",
                                          help="删除这条记录",
                                          use_container_width=True):
-                                if delete_record_from_db(record_id):
-                                    st.toast("✅ 已删除", icon="✅")
-                                    st.rerun()
-                                else:
-                                    st.toast("⚠️ 删除失败", icon="⚠️")
+                                st.session_state[pending_delete_key] = record_id
+                                st.rerun()
     else:
         st.markdown(
             '<p style="text-align:center; color:#86868b; font-size:14px; padding:20px 0;">'
