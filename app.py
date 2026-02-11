@@ -8,6 +8,7 @@ import zipfile
 import urllib.request
 import urllib.parse
 import urllib.error
+import concurrent.futures
 from pathlib import Path
 from openai import OpenAI
 
@@ -770,10 +771,9 @@ def _phase1_candidates(client, image_base64: str, context_block: str) -> list:
 
 
 def identify_bird(image_base64: str, api_key: str, exif_info: dict) -> dict:
-    """两阶段鸟类识别 + 摄影评分（使用 qwen-vl-max-latest）
+    """单阶段鸟类识别 + 摄影评分（使用 qwen-vl-max-latest）
 
-    第一阶段：快速给出 top-3 候选鸟种及区分特征
-    第二阶段：基于候选信息做最终精确判断 + 摄影评分
+    通过思维链 prompt 引导 AI 先列候选再做最终判断，一次调用完成。
     """
     client = OpenAI(
         api_key=api_key,
@@ -782,33 +782,6 @@ def identify_bird(image_base64: str, api_key: str, exif_info: dict) -> dict:
 
     context_block, season = _build_context_block(exif_info)
 
-    # ---- 第一阶段：获取 top-3 候选种 ----
-    candidates, excluded, observed_features = _phase1_candidates(client, image_base64, context_block)
-
-    # 构建候选信息供第二阶段使用
-    candidates_block = ""
-    if candidates:
-        candidates_block = "\n\n【第一阶段候选结果 - 请在此基础上做最终判断】\n"
-        candidates_block += f"照片特征概述：{observed_features}\n\n"
-        for idx, cand in enumerate(candidates, 1):
-            candidates_block += (
-                f"候选{idx}：{cand.get('chinese_name', '?')} ({cand.get('english_name', '?')})\n"
-                f"  支持特征：{cand.get('key_features', '')}\n"
-                f"  区分要点：{cand.get('distinguishing_marks', '')}\n"
-                f"  分布：{cand.get('distribution', '')}\n"
-                f"  初步置信度：{cand.get('confidence', '?')}%\n\n"
-            )
-        if excluded:
-            candidates_block += "已排除的易混淆种：\n"
-            for exc in excluded:
-                candidates_block += f"  ✗ {exc.get('chinese_name', '?')}：{exc.get('reason', '')}\n"
-        candidates_block += (
-            "\n请基于以上候选信息，重新仔细审视照片，做出最终判断。\n"
-            "你可以选择候选种之一，也可以推翻候选给出新的判断（需说明理由）。\n"
-            "必须在 identification_basis 中说明你最终选择该种而非其他候选种的关键依据。"
-        )
-
-    # ---- 第二阶段：精确判断 + 评分 ----
     response = client.chat.completions.create(
         model="qwen-vl-max-latest",
         temperature=0.3,
@@ -834,15 +807,19 @@ def identify_bird(image_base64: str, api_key: str, exif_info: dict) -> dict:
                         "type": "text",
                         "text": (
                             "请完成以下任务：\n\n"
-                            "## 任务一：鸟种最终判定\n"
-                            "这张照片拍摄于中国境内，请在中国有分布记录的鸟种范围内做最终识别。\n"
-                            "仔细观察以下特征来精确识别：\n"
+                            "## 任务一：鸟种识别（思维链）\n"
+                            "这张照片拍摄于中国境内，请按以下步骤严格执行：\n\n"
+                            "**步骤1 - 特征观察：** 仔细观察照片中鸟的以下特征：\n"
                             "- 体型大小和比例（与麻雀/鸽子/乌鸦等常见鸟对比）\n"
                             "- 喙的形状、长度、粗细和颜色\n"
                             "- 头部特征（冠羽、眉纹、贯眼纹、眼圈颜色）\n"
                             "- 上体和下体羽色、翼斑、腰色、尾羽形状和颜色\n"
                             "- 腿脚颜色\n"
-                            "- 结合栖息环境（水域/林地/草地/城市等）辅助判断\n\n"
+                            "- 栖息环境（水域/林地/草地/城市等）\n\n"
+                            "**步骤2 - 候选筛选：** 根据观察到的特征，在脑中列出2-3个最可能的候选鸟种，"
+                            "逐一比对每个候选种的关键区分特征，排除不符合的。\n\n"
+                            "**步骤3 - 最终判定：** 从候选种中选出最匹配的，在 identification_basis 中"
+                            "说明选择理由和排除其他候选种的依据。\n\n"
                             "## 任务二：鸟的位置标注\n"
                             "估算鸟在图片中的位置，用百分比坐标 [x1, y1, x2, y2]（0-100）。\n"
                             "边界框应紧密包围整只鸟。多只鸟时标注最显眼的。\n\n"
@@ -898,7 +875,6 @@ def identify_bird(image_base64: str, api_key: str, exif_info: dict) -> dict:
                             "5. identification_basis 必须说明为何选择该种而非其他候选种\n"
                             "6. excluded_similar_species 必须列出至少1个排除的易混淆种及理由"
                             f"{context_block}"
-                            f"{candidates_block}"
                         ),
                     },
                 ],
@@ -910,7 +886,6 @@ def identify_bird(image_base64: str, api_key: str, exif_info: dict) -> dict:
     json_match = re.search(r'\{[^{}]*\}', result_text, re.DOTALL)
     if json_match:
         parsed = json.loads(json_match.group())
-        # 确保分项分数在合理范围内
         dimension_keys = [
             ("score_sharpness", 20), ("score_composition", 20),
             ("score_lighting", 20), ("score_background", 15),
@@ -1515,14 +1490,10 @@ with hero_right:
                     unsafe_allow_html=True,
                 )
                 progress_bar = st.progress(0)
+                progress_text = st.empty()
 
-                for idx, uploaded_file in enumerate(new_files):
-                    fkey = make_file_key(uploaded_file)
-                    progress_bar.progress(
-                        (idx + 0.5) / len(new_files),
-                        text=f"🔍 识别中 ({idx + 1}/{len(new_files)}) {uploaded_file.name}",
-                    )
-
+                def _process_single_file(uploaded_file):
+                    """在线程中处理单张照片：EXIF提取 + 编码 + AI识别 + 保存数据库"""
                     image_bytes = uploaded_file.getvalue()
                     suffix = Path(uploaded_file.name).suffix.lower()
                     exif_info = extract_exif_info(image_bytes, uploaded_file.name)
@@ -1541,11 +1512,41 @@ with hero_right:
                     result["shoot_date"] = shoot_date
                     result["original_name"] = uploaded_file.name
 
-                    st.session_state["identified_cache"][fkey] = {
+                    # 生成缩略图并保存到数据库
+                    if supabase_client and user_nickname:
+                        thumb_b64 = generate_thumbnail_base64(image_bytes, uploaded_file.name)
+                        save_record_to_db(supabase_client, user_nickname, result, thumb_b64)
+
+                    return uploaded_file, {
                         "result": result,
                         "image_bytes": image_bytes,
                         "suffix": suffix,
                     }
+
+                # 并发识别（最多 3 个线程，避免 API 限流）
+                max_workers = min(3, len(new_files))
+                completed_count = 0
+
+                with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+                    future_to_file = {
+                        executor.submit(_process_single_file, f): f
+                        for f in new_files
+                    }
+                    for future in concurrent.futures.as_completed(future_to_file):
+                        completed_count += 1
+                        uploaded_file_done = future_to_file[future]
+                        progress_bar.progress(
+                            completed_count / len(new_files),
+                            text=f"🔍 已完成 {completed_count}/{len(new_files)}",
+                        )
+                        try:
+                            done_file, cache_entry = future.result()
+                            fkey = make_file_key(done_file)
+                            st.session_state["identified_cache"][fkey] = cache_entry
+                        except Exception:
+                            pass
+
+                progress_text.empty()
 
                 # 新增记录后清除缓存，确保历史记录和排行榜刷新
                 fetch_user_history.clear()
