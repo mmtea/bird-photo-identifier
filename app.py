@@ -810,22 +810,31 @@ if uploaded_files:
 # 上传后自动识别
 # ============================================================
 if uploaded_files and api_key:
-    # 用文件名+大小+内容哈希作为缓存 key，确保不同文件绝不会命中缓存
-    file_key = "_".join(
-        sorted(f"{f.name}_{f.size}_{hashlib.md5(f.getvalue()).hexdigest()[:8]}" for f in uploaded_files)
-    )
+    # 初始化单文件级别的缓存字典：file_unique_key -> result item
+    if "identified_cache" not in st.session_state:
+        st.session_state["identified_cache"] = {}
 
-    if st.session_state.get("last_file_key") != file_key:
-        st.session_state["last_file_key"] = file_key
-        st.session_state.pop("results_with_bytes", None)
-        st.session_state.pop("zip_bytes", None)
+    # 用文件名+大小作为轻量级唯一标识（避免对大文件算 MD5 导致卡顿）
+    def make_file_key(uploaded_file):
+        return f"{uploaded_file.name}_{uploaded_file.size}"
 
-        results_with_bytes = []
-        progress_bar = st.progress(0, text="正在识别中...")
+    # 找出本次上传中尚未识别的新文件
+    current_file_keys = set()
+    new_files = []
+    for uploaded_file in uploaded_files:
+        fkey = make_file_key(uploaded_file)
+        current_file_keys.add(fkey)
+        if fkey not in st.session_state["identified_cache"]:
+            new_files.append(uploaded_file)
 
-        for idx, uploaded_file in enumerate(uploaded_files):
-            progress_text = f"正在识别 [{idx + 1}/{len(uploaded_files)}]: {uploaded_file.name}"
-            progress_bar.progress((idx) / len(uploaded_files), text=progress_text)
+    # 只对新文件进行识别（增量识别）
+    if new_files:
+        progress_bar = st.progress(0, text="正在识别新照片...")
+
+        for idx, uploaded_file in enumerate(new_files):
+            fkey = make_file_key(uploaded_file)
+            progress_text = f"正在识别 [{idx + 1}/{len(new_files)}]: {uploaded_file.name}"
+            progress_bar.progress(idx / len(new_files), text=progress_text)
 
             image_bytes = uploaded_file.getvalue()
             suffix = Path(uploaded_file.name).suffix.lower()
@@ -850,20 +859,27 @@ if uploaded_files and api_key:
             result["shoot_date"] = shoot_date
             result["original_name"] = uploaded_file.name
 
-            results_with_bytes.append({
+            # 缓存到 session_state，下次不再重复识别
+            st.session_state["identified_cache"][fkey] = {
                 "result": result,
                 "image_bytes": image_bytes,
                 "suffix": suffix,
-            })
+            }
 
-        progress_bar.progress(1.0, text="✅ 识别完成！正在打包...")
+        progress_bar.progress(1.0, text=f"✅ 新增 {len(new_files)} 张识别完成！")
 
-        # 自动生成 ZIP
+    # 按当前上传文件的顺序，从缓存中组装完整结果列表
+    results_with_bytes = []
+    for uploaded_file in uploaded_files:
+        fkey = make_file_key(uploaded_file)
+        if fkey in st.session_state["identified_cache"]:
+            results_with_bytes.append(st.session_state["identified_cache"][fkey])
+
+    # 生成 ZIP（每次都重新生成，因为文件组合可能变化）
+    if results_with_bytes:
         zip_bytes = create_organized_zip(results_with_bytes)
         st.session_state["results_with_bytes"] = results_with_bytes
         st.session_state["zip_bytes"] = zip_bytes
-
-        progress_bar.progress(1.0, text="✅ 全部完成！")
 
 
 # ============================================================
