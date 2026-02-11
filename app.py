@@ -7,6 +7,7 @@ import base64
 import hashlib
 import zipfile
 import urllib.request
+import urllib.parse
 from pathlib import Path
 
 try:
@@ -18,12 +19,6 @@ except ImportError:
 from datetime import datetime
 
 from openai import OpenAI
-
-try:
-    from supabase import create_client
-    HAS_SUPABASE = True
-except ImportError:
-    HAS_SUPABASE = False
 
 # RAW 格式后缀集合（索尼 ARW、佳能 CR2/CR3、尼康 NEF 等）
 RAW_EXTENSIONS = {".arw", ".cr2", ".cr3", ".nef", ".nrw", ".dng", ".raf", ".orf", ".rw2", ".pef", ".srw"}
@@ -800,18 +795,51 @@ def crop_to_bird(img: "Image.Image", bbox: list, padding_ratio: float = 0.15) ->
 
 
 # ============================================================
-# 数据库相关函数（Supabase）
+# 数据库相关函数（通过 Supabase REST API，无需额外依赖）
 # ============================================================
-def get_supabase_client():
-    """获取 Supabase 客户端"""
-    if not HAS_SUPABASE:
-        return None
+def _supabase_config():
+    """获取 Supabase 配置，返回 (url, key) 或 (None, None)"""
     try:
-        supabase_url = st.secrets["SUPABASE_URL"]
-        supabase_key = st.secrets["SUPABASE_KEY"]
-        return create_client(supabase_url, supabase_key)
+        return st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"]
     except (KeyError, FileNotFoundError):
+        return None, None
+
+
+def _supabase_request(method: str, endpoint: str, body: dict = None,
+                      params: str = ""):
+    """通用 Supabase REST API 请求"""
+    base_url, api_key = _supabase_config()
+    if not base_url or not api_key:
         return None
+
+    url = f"{base_url}/rest/v1/{endpoint}"
+    if params:
+        url += f"?{params}"
+
+    headers = {
+        "apikey": api_key,
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+        "Prefer": "return=representation",
+    }
+
+    data = json.dumps(body).encode("utf-8") if body else None
+    req = urllib.request.Request(url, data=data, headers=headers, method=method)
+
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            response_body = resp.read().decode("utf-8")
+            if response_body:
+                return json.loads(response_body)
+            return None
+    except Exception:
+        return None
+
+
+def get_supabase_client():
+    """检查 Supabase 是否可用，返回 True/False（兼容原有调用方式）"""
+    base_url, api_key = _supabase_config()
+    return True if (base_url and api_key) else None
 
 
 def generate_thumbnail_base64(image_bytes: bytes, filename: str = "",
@@ -840,7 +868,7 @@ def generate_thumbnail_base64(image_bytes: bytes, filename: str = "",
 def save_record_to_db(supabase_client, user_nickname: str, result: dict,
                       thumbnail_b64: str) -> bool:
     """将一条识别记录保存到 Supabase 数据库"""
-    if supabase_client is None:
+    if not supabase_client:
         return False
     try:
         record = {
@@ -863,42 +891,39 @@ def save_record_to_db(supabase_client, user_nickname: str, result: dict,
             "shoot_date": result.get("shoot_date", ""),
             "thumbnail_base64": thumbnail_b64,
         }
-        supabase_client.table("bird_records").insert(record).execute()
-        return True
+        result_data = _supabase_request("POST", "bird_records", body=record)
+        return result_data is not None
     except Exception:
         return False
 
 
 def fetch_user_history(supabase_client, user_nickname: str, limit: int = 50) -> list:
     """查询用户的历史识别记录"""
-    if supabase_client is None:
+    if not supabase_client:
         return []
     try:
-        response = (
-            supabase_client.table("bird_records")
-            .select("*")
-            .eq("user_nickname", user_nickname)
-            .order("created_at", desc=True)
-            .limit(limit)
-            .execute()
+        encoded_nickname = urllib.parse.quote(user_nickname)
+        params = (
+            f"user_nickname=eq.{encoded_nickname}"
+            f"&order=created_at.desc"
+            f"&limit={limit}"
+            f"&select=*"
         )
-        return response.data or []
+        result = _supabase_request("GET", "bird_records", params=params)
+        return result if isinstance(result, list) else []
     except Exception:
         return []
 
 
 def fetch_user_stats(supabase_client, user_nickname: str) -> dict:
     """查询用户的统计数据"""
-    if supabase_client is None:
+    if not supabase_client:
         return {}
     try:
-        response = (
-            supabase_client.table("bird_records")
-            .select("*")
-            .eq("user_nickname", user_nickname)
-            .execute()
-        )
-        records = response.data or []
+        encoded_nickname = urllib.parse.quote(user_nickname)
+        params = f"user_nickname=eq.{encoded_nickname}&select=chinese_name,score"
+        result = _supabase_request("GET", "bird_records", params=params)
+        records = result if isinstance(result, list) else []
         if not records:
             return {"total": 0, "species": 0, "avg_score": 0, "best_score": 0}
         species_set = set(r["chinese_name"] for r in records if r.get("chinese_name"))
