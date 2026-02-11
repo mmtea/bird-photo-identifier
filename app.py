@@ -8,6 +8,7 @@ import hashlib
 import zipfile
 import urllib.request
 import urllib.parse
+import urllib.error
 from pathlib import Path
 
 try:
@@ -827,11 +828,19 @@ def _supabase_request(method: str, endpoint: str, body: dict = None,
     req = urllib.request.Request(url, data=data, headers=headers, method=method)
 
     try:
-        with urllib.request.urlopen(req, timeout=15) as resp:
+        with urllib.request.urlopen(req, timeout=30) as resp:
             response_body = resp.read().decode("utf-8")
             if response_body:
                 return json.loads(response_body)
             return None
+    except urllib.error.HTTPError as http_err:
+        error_body = ""
+        try:
+            error_body = http_err.read().decode("utf-8")
+        except Exception:
+            pass
+        st.toast(f"⚠️ 数据库请求失败: {http_err.code} {error_body[:100]}", icon="⚠️")
+        return None
     except Exception:
         return None
 
@@ -913,6 +922,16 @@ def fetch_user_history(supabase_client, user_nickname: str, limit: int = 50) -> 
         return result if isinstance(result, list) else []
     except Exception:
         return []
+
+
+def delete_record_from_db(record_id: int) -> bool:
+    """从数据库中删除一条识别记录"""
+    try:
+        params = f"id=eq.{record_id}"
+        _supabase_request("DELETE", "bird_records", params=params)
+        return True
+    except Exception:
+        return False
 
 
 def fetch_user_stats(supabase_client, user_nickname: str) -> dict:
@@ -1185,13 +1204,15 @@ if uploaded_files and api_key:
                 "suffix": suffix,
             }
 
-            # 保存到云数据库（生成缩略图后异步存储）
+            # 保存到云数据库（生成缩略图后存储）
             if supabase_client and user_nickname:
                 bird_bbox = result.get("bird_bbox")
                 thumb_b64 = generate_thumbnail_base64(
                     image_bytes, uploaded_file.name, bird_bbox
                 )
-                save_record_to_db(supabase_client, user_nickname, result, thumb_b64)
+                saved = save_record_to_db(supabase_client, user_nickname, result, thumb_b64)
+                if not saved:
+                    st.toast(f"⚠️ {uploaded_file.name} 保存到云端失败", icon="⚠️")
 
         progress_bar.progress(1.0, text=f"✅ 新增 {len(new_files)} 张识别完成！")
 
@@ -1508,6 +1529,18 @@ if supabase_client and user_nickname:
                                 )
                             except Exception:
                                 pass
+
+                        # 删除按钮
+                        record_id = record.get("id")
+                        if record_id:
+                            if st.button("🗑️", key=f"del_{record_id}",
+                                         help="删除这条记录",
+                                         use_container_width=True):
+                                if delete_record_from_db(record_id):
+                                    st.toast("✅ 已删除", icon="✅")
+                                    st.rerun()
+                                else:
+                                    st.toast("⚠️ 删除失败", icon="⚠️")
     else:
         st.markdown(
             '<p style="text-align:center; color:#86868b; font-size:14px; padding:20px 0;">'
