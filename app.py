@@ -1041,15 +1041,14 @@ def get_supabase_client():
 
 def generate_thumbnail_base64(image_bytes: bytes, filename: str = "",
                               bird_bbox: list = None, max_width: int = 480) -> str:
-    """生成缩略图的 base64 字符串（聚焦到鸟，压缩到 480px 宽）"""
+    """生成缩略图的 base64 字符串（保留完整画面，压缩到 480px 宽）"""
     img = image_bytes_to_pil(image_bytes, filename)
     if img is None:
         return ""
     try:
         if img.mode not in ("RGB", "L"):
             img = img.convert("RGB")
-        if bird_bbox and len(bird_bbox) == 4:
-            img = crop_to_bird(img, bird_bbox)
+        # 不裁剪，保留完整的鸟的形象
         width, height = img.size
         if width > max_width:
             ratio = max_width / width
@@ -1738,7 +1737,7 @@ if supabase_client and user_nickname:
                             if thumb_b64:
                                 st.markdown(
                                     f'<img src="data:image/jpeg;base64,{thumb_b64}" '
-                                    f'style="width:100%; border-radius:10px; aspect-ratio:4/3; object-fit:cover;" '
+                                    f'style="width:100%; border-radius:10px; object-fit:contain;" '
                                     f'loading="lazy" alt="bird">',
                                     unsafe_allow_html=True,
                                 )
