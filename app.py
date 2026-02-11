@@ -663,14 +663,8 @@ def reverse_geocode(latitude: float, longitude: float) -> str:
     return ""
 
 
-def identify_bird(image_base64: str, api_key: str, exif_info: dict) -> dict:
-    """使用通义千问多模态模型识别鸟类并进行专业摄影评分"""
-    client = OpenAI(
-        api_key=api_key,
-        base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
-    )
-
-    # 构建地理位置和季节辅助信息
+def _build_context_block(exif_info: dict) -> tuple:
+    """构建地理位置和季节辅助信息，返回 (context_block, season)"""
     context_block = ""
     season = ""
     location_name = exif_info.get("geocoded_location", "")
@@ -689,7 +683,6 @@ def identify_bird(image_base64: str, api_key: str, exif_info: dict) -> dict:
             else:
                 season = "冬季（越冬期，12-2月）"
 
-    # 构建详细的地理+季节约束
     if location_name or season or (exif_info.get("gps_lat") and exif_info.get("gps_lon")):
         context_block = "\n\n【关键约束 - 必须结合以下信息缩小候选鸟种范围】\n"
         if location_name:
@@ -706,14 +699,121 @@ def identify_bird(image_base64: str, api_key: str, exif_info: dict) -> dict:
             "2. 然后逐一检查每个候选种在该地区、该季节是否有分布记录\n"
             "3. 排除在该地区该季节不可能出现的鸟种\n"
             "4. 从剩余候选种中选择最匹配的\n"
-            "例如：如果拍摄于冬季的杭州，则排除仅在东北繁殖且不在华东越冬的鸟种；"
-            "如果拍摄于夏季的北京，则排除仅在南方分布的留鸟。\n"
             "候鸟的季节性分布尤其重要：夏候鸟只在繁殖季出现，冬候鸟只在越冬季出现，"
             "旅鸟只在迁徙季短暂停留。"
         )
 
+    return context_block, season
+
+
+def _phase1_candidates(client, image_base64: str, context_block: str) -> list:
+    """第一阶段：快速识别 top-3 候选鸟种"""
     response = client.chat.completions.create(
-        model="qwen-vl-max",
+        model="qwen-vl-max-latest",
+        temperature=0.2,
+        messages=[
+            {
+                "role": "system",
+                "content": (
+                    "你是一位专精中国鸟类的顶级鸟类学家。"
+                    "你熟悉《中国鸟类野外手册》中记录的所有鸟种，"
+                    "精通中国境内1400余种鸟类的辨识要点、分布范围和季节性变化。"
+                    "你能根据细微的羽色差异区分易混淆种。"
+                ),
+            },
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"},
+                    },
+                    {
+                        "type": "text",
+                        "text": (
+                            "请仔细观察这张鸟类照片，给出最可能的 3 个候选鸟种。\n\n"
+                            "对每个候选种，请说明：\n"
+                            "1. 中文名和英文名\n"
+                            "2. 你从照片中观察到的支持该种的关键特征（具体描述喙、眉纹、羽色等）\n"
+                            "3. 与其他候选种的关键区分点是什么\n"
+                            "4. 该种在中国的分布范围和季节性\n"
+                            "5. 置信度（0-100%）\n\n"
+                            "同时列出你排除的易混淆种（至少2个），说明排除理由。\n\n"
+                            "只返回 JSON，格式如下：\n"
+                            "{\n"
+                            '  "candidates": [\n'
+                            '    {"chinese_name": "种名", "english_name": "name", '
+                            '"key_features": "从照片观察到的支持特征", '
+                            '"distinguishing_marks": "与其他候选种的区分点", '
+                            '"distribution": "分布和季节性", "confidence": 80},\n'
+                            '    ...\n'
+                            '  ],\n'
+                            '  "excluded_species": [\n'
+                            '    {"chinese_name": "种名", "reason": "排除理由"}\n'
+                            '  ],\n'
+                            '  "observed_features": "照片中鸟的整体特征描述（体型、喙、羽色、环境等）"\n'
+                            "}\n"
+                            f"{context_block}"
+                        ),
+                    },
+                ],
+            },
+        ],
+    )
+
+    result_text = response.choices[0].message.content.strip()
+    json_match = re.search(r'\{.*\}', result_text, re.DOTALL)
+    if json_match:
+        try:
+            parsed = json.loads(json_match.group())
+            return parsed.get("candidates", []), parsed.get("excluded_species", []), parsed.get("observed_features", "")
+        except (json.JSONDecodeError, ValueError):
+            pass
+    return [], [], ""
+
+
+def identify_bird(image_base64: str, api_key: str, exif_info: dict) -> dict:
+    """两阶段鸟类识别 + 摄影评分（使用 qwen-vl-max-latest）
+
+    第一阶段：快速给出 top-3 候选鸟种及区分特征
+    第二阶段：基于候选信息做最终精确判断 + 摄影评分
+    """
+    client = OpenAI(
+        api_key=api_key,
+        base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+    )
+
+    context_block, season = _build_context_block(exif_info)
+
+    # ---- 第一阶段：获取 top-3 候选种 ----
+    candidates, excluded, observed_features = _phase1_candidates(client, image_base64, context_block)
+
+    # 构建候选信息供第二阶段使用
+    candidates_block = ""
+    if candidates:
+        candidates_block = "\n\n【第一阶段候选结果 - 请在此基础上做最终判断】\n"
+        candidates_block += f"照片特征概述：{observed_features}\n\n"
+        for idx, cand in enumerate(candidates, 1):
+            candidates_block += (
+                f"候选{idx}：{cand.get('chinese_name', '?')} ({cand.get('english_name', '?')})\n"
+                f"  支持特征：{cand.get('key_features', '')}\n"
+                f"  区分要点：{cand.get('distinguishing_marks', '')}\n"
+                f"  分布：{cand.get('distribution', '')}\n"
+                f"  初步置信度：{cand.get('confidence', '?')}%\n\n"
+            )
+        if excluded:
+            candidates_block += "已排除的易混淆种：\n"
+            for exc in excluded:
+                candidates_block += f"  ✗ {exc.get('chinese_name', '?')}：{exc.get('reason', '')}\n"
+        candidates_block += (
+            "\n请基于以上候选信息，重新仔细审视照片，做出最终判断。\n"
+            "你可以选择候选种之一，也可以推翻候选给出新的判断（需说明理由）。\n"
+            "必须在 identification_basis 中说明你最终选择该种而非其他候选种的关键依据。"
+        )
+
+    # ---- 第二阶段：精确判断 + 评分 ----
+    response = client.chat.completions.create(
+        model="qwen-vl-max-latest",
         temperature=0.3,
         messages=[
             {
@@ -731,92 +831,58 @@ def identify_bird(image_base64: str, api_key: str, exif_info: dict) -> dict:
                 "content": [
                     {
                         "type": "image_url",
-                        "image_url": {
-                            "url": f"data:image/jpeg;base64,{image_base64}"
-                        },
+                        "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"},
                     },
                     {
                         "type": "text",
                         "text": (
-                            "请完成以下两个任务：\n\n"
-                            "## 任务一：鸟种识别（聚焦中国鸟类）\n"
-                            "这些照片均拍摄于中国境内，请在中国有分布记录的鸟种范围内进行识别。\n"
+                            "请完成以下任务：\n\n"
+                            "## 任务一：鸟种最终判定\n"
+                            "这张照片拍摄于中国境内，请在中国有分布记录的鸟种范围内做最终识别。\n"
                             "仔细观察以下特征来精确识别：\n"
                             "- 体型大小和比例（与麻雀/鸽子/乌鸦等常见鸟对比）\n"
                             "- 喙的形状、长度、粗细和颜色\n"
                             "- 头部特征（冠羽、眉纹、贯眼纹、眼圈颜色）\n"
                             "- 上体和下体羽色、翼斑、腰色、尾羽形状和颜色\n"
                             "- 腿脚颜色\n"
-                            "- 注意区分中国常见的易混淆种（如各种柳莺、鹀、鸫、鹟等）\n"
                             "- 结合栖息环境（水域/林地/草地/城市等）辅助判断\n\n"
                             "## 任务二：鸟的位置标注\n"
-                            "请估算鸟在图片中的位置，用百分比坐标表示边界框 [x1, y1, x2, y2]：\n"
-                            "- x1, y1 是鸟所在区域左上角的坐标（占图片宽高的百分比，0-100）\n"
-                            "- x2, y2 是鸟所在区域右下角的坐标（占图片宽高的百分比，0-100）\n"
-                            "- 边界框应紧密包围整只鸟（包括尾羽和脚），但不要留太多空白\n"
-                            "- 如果图片中有多只鸟，标注最显眼/最大的那只\n\n"
+                            "估算鸟在图片中的位置，用百分比坐标 [x1, y1, x2, y2]（0-100）。\n"
+                            "边界框应紧密包围整只鸟。多只鸟时标注最显眼的。\n\n"
                             "## 任务三：专业摄影评分\n"
                             "以国际鸟类摄影大赛的标准严格评分。\n\n"
                             "**【核心评分方法 - 必须严格遵守】**\n"
-                            "每个维度从该维度满分的50%（即中位数）开始，然后根据优缺点加减分：\n"
+                            "每个维度从该维度满分的50%开始，根据优缺点加减分：\n"
                             "- 有明显优点：+1到+3分\n"
                             "- 有明显缺点：-1到-5分\n"
                             "- 有严重缺陷：直接降到该维度满分的20%以下\n"
                             "- 只有极其出色才能超过该维度满分的80%\n\n"
-                            "**各维度起始分和评判标准：**\n\n"
                             "**1. 主体清晰度（0-20分，起始10分）**\n"
-                            "- 鸟眼是否锐利合焦？是+2，否-3\n"
-                            "- 羽毛细节是否可见？纤毫毕现+3，模糊-3\n"
-                            "- 有无运动模糊？无+1，有-2到-4\n"
-                            "- 16分以上要求：鸟眼极锐+羽毛纤维可见+零噪点\n\n"
+                            "鸟眼锐利+2/模糊-3；羽毛纤毫毕现+3/模糊-3；运动模糊-2到-4\n\n"
                             "**2. 构图与美感（0-20分，起始10分）**\n"
-                            "- 主体是否居中无变化？是-2（构图平庸）\n"
-                            "- 是否运用三分法/黄金分割？是+2\n"
-                            "- 留白是否恰当？恰当+1，过多/过少-2\n"
-                            "- 主体是否被裁切？是-3到-5\n"
-                            "- 16分以上要求：构图有创意+视觉冲击力强\n\n"
+                            "三分法/黄金分割+2；居中平庸-2；主体裁切-3到-5\n\n"
                             "**3. 光线与色彩（0-20分，起始10分）**\n"
-                            "- 是否黄金时段光线？是+3，正午顶光-2，阴天平光-1\n"
-                            "- 曝光是否准确？准确+1，过曝/欠曝-3\n"
-                            "- 色彩是否自然饱满？是+1，偏色-2\n"
-                            "- 16分以上要求：完美光线+眼神光+色彩层次丰富\n\n"
+                            "黄金时段+3；正午顶光-2；过曝/欠曝-3\n\n"
                             "**4. 背景与环境（0-15分，起始7分）**\n"
-                            "- 背景是否干净虚化？奶油虚化+3，轻微杂乱-1，严重杂乱-3\n"
-                            "- 有无干扰元素（电线/垃圾/人工物）？有-2到-4\n"
-                            "- 12分以上要求：背景完美虚化+色调和谐+衬托主体\n\n"
+                            "奶油虚化+3；杂乱-3；干扰元素-2到-4\n\n"
                             "**5. 姿态与瞬间（0-15分，起始7分）**\n"
-                            "- 是否捕捉到行为瞬间（展翅/捕食/求偶）？是+3到+5\n"
-                            "- 普通静立？维持7分不加分\n"
-                            "- 背对/缩头/遮挡？-2到-4\n"
-                            "- 12分以上要求：精彩行为瞬间+眼神交流\n\n"
+                            "行为瞬间+3到+5；普通静立不加分；背对/遮挡-2到-4\n\n"
                             "**6. 艺术性与故事感（0-10分，起始3分）**\n"
-                            "- 注意：大多数照片艺术性只有2-4分！\n"
-                            "- 纯记录照：2-3分\n"
-                            "- 有一定氛围感：4-5分\n"
-                            "- 有意境和情感：6-7分\n"
-                            "- 8分以上要求：强烈情感共鸣+叙事性+可作为艺术品\n\n"
-                            "**总分分布预期（你必须遵守）：**\n"
-                            "- 90+：百里挑一的杰作，你每100张照片最多给1张90+\n"
-                            "- 75-89：优秀作品，约占10%\n"
-                            "- 55-74：普通到良好，大多数照片应在此区间\n"
-                            "- 40-54：有明显不足\n"
-                            "- 40以下：质量很差\n\n"
-                            "**反作弊检查：打分完成后自查，如果总分>80，请重新审视每个分项，"
-                            "确认是否每个维度都真的达到了该分数对应的严格标准。"
-                            "如果不确定，宁可降低2-3分。**\n\n"
+                            "纯记录照2-3分；有氛围4-5分；有意境6-7分；8+需强烈共鸣\n\n"
+                            "**总分分布：** 90+百里挑一；75-89优秀约10%；55-74大多数；40-54有不足；<40很差\n\n"
+                            "**反作弊：总分>80时重新审视每个分项，不确定则降2-3分。**\n\n"
                             "只返回一个 JSON 对象，不要返回其他内容。\n"
-                            "【重要】下面是 JSON 格式模板，其中的数值仅为格式示意，"
-                            "你必须根据实际照片独立评判每个分项，严禁照抄模板中的数值！\n"
                             "{\n"
-                            '  "chinese_name": "填写实际识别的中文种名",\n'
-                            '  "english_name": "填写实际识别的英文种名",\n'
-                            '  "order_chinese": "填写实际的目中文名",\n'
-                            '  "order_english": "填写实际的目英文名",\n'
-                            '  "family_chinese": "填写实际的科中文名",\n'
-                            '  "family_english": "填写实际的科英文名",\n'
-                            '  "confidence": "根据实际判断填 high/medium/low",\n'
-                            '  "identification_basis": "根据实际观察填写识别依据（20字以内）",\n'
-                            '  "bird_description": "根据识别出的鸟种填写详细介绍（100-150字），包括外形特点、生活习性、栖息生境、全球分布、在中国的常见程度",\n'
+                            '  "chinese_name": "最终确定的中文种名",\n'
+                            '  "english_name": "英文种名",\n'
+                            '  "order_chinese": "目中文名",\n'
+                            '  "order_english": "目英文名",\n'
+                            '  "family_chinese": "科中文名",\n'
+                            '  "family_english": "科英文名",\n'
+                            '  "confidence": "high/medium/low",\n'
+                            '  "identification_basis": "最终选择该种的关键依据，以及排除其他候选种的理由（30字以内）",\n'
+                            '  "excluded_similar_species": "排除的易混淆种及理由（如：非白头鹎，因缺少红色臀部）",\n'
+                            '  "bird_description": "该鸟种详细介绍（100-150字），含外形、习性、生境、分布、常见程度",\n'
                             '  "bird_bbox": [x1, y1, x2, y2],\n'
                             '  "score": 0,\n'
                             '  "score_sharpness": 0,\n'
@@ -825,20 +891,21 @@ def identify_bird(image_base64: str, api_key: str, exif_info: dict) -> dict:
                             '  "score_background": 0,\n'
                             '  "score_pose": 0,\n'
                             '  "score_artistry": 0,\n'
-                            '  "score_comment": "根据实际照片填写点评（30字以内）"\n'
+                            '  "score_comment": "照片点评（30字以内）"\n'
                             "}\n\n"
                             "要求：\n"
                             "1. 必须精确到具体鸟种，目和科使用正确分类学名称\n"
                             "2. 如果无法识别，chinese_name 填 \"未知鸟类\"\n"
                             "3. score 必须等于6个分项之和\n"
-                            "4. 每个分项必须根据照片实际情况独立评判，不同照片的分数应有明显差异\n"
-                            "5. 严禁所有分项都给相同或相近的分数，必须体现照片各维度的真实差异\n"
-                            "6. bird_description 必须是专业准确的鸟类学知识，内容丰富有趣"
+                            "4. 每个分项必须根据照片实际情况独立评判\n"
+                            "5. identification_basis 必须说明为何选择该种而非其他候选种\n"
+                            "6. excluded_similar_species 必须列出至少1个排除的易混淆种及理由"
                             f"{context_block}"
+                            f"{candidates_block}"
                         ),
                     },
                 ],
-            }
+            },
         ],
     )
 
