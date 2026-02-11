@@ -1484,7 +1484,16 @@ if supabase_client and user_nickname:
     st.markdown("<br>", unsafe_allow_html=True)
     st.markdown('<p class="section-title">📚 我的观鸟记录</p>', unsafe_allow_html=True)
 
-    # 用户统计概览
+    # 先处理待删除的记录（确保统计数据和列表都是最新的）
+    pending_delete_key = "_pending_delete_record_id"
+    if pending_delete_key in st.session_state:
+        delete_id = st.session_state.pop(pending_delete_key)
+        if delete_record_from_db(delete_id):
+            st.toast("✅ 已删除", icon="✅")
+        else:
+            st.toast("⚠️ 删除失败，请检查数据库权限", icon="⚠️")
+
+    # 用户统计概览（在删除处理之后，确保数字是最新的）
     user_stats = fetch_user_stats(supabase_client, user_nickname)
     if user_stats and user_stats.get("total", 0) > 0:
         hist_stat_cols = st.columns(4, gap="medium")
@@ -1505,15 +1514,6 @@ if supabase_client and user_nickname:
                 )
 
         st.markdown("<br>", unsafe_allow_html=True)
-
-    # 处理待删除的记录（在渲染前执行，避免 expander 收起）
-    pending_delete_key = "_pending_delete_record_id"
-    if pending_delete_key in st.session_state:
-        delete_id = st.session_state.pop(pending_delete_key)
-        if delete_record_from_db(delete_id):
-            st.toast("✅ 已删除", icon="✅")
-        else:
-            st.toast("⚠️ 删除失败，请检查数据库权限", icon="⚠️")
 
     # 历史记录列表
     history_records = fetch_user_history(supabase_client, user_nickname)
