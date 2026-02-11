@@ -34,8 +34,10 @@ CREATE INDEX IF NOT EXISTS idx_bird_records_species ON bird_records (chinese_nam
 ALTER TABLE bird_records ENABLE ROW LEVEL SECURITY;
 
 -- 允许匿名用户插入和查询（通过 anon key）
+DROP POLICY IF EXISTS "允许所有人插入记录" ON bird_records;
 CREATE POLICY "允许所有人插入记录" ON bird_records
     FOR INSERT WITH CHECK (true);
 
+DROP POLICY IF EXISTS "允许所有人查询记录" ON bird_records;
 CREATE POLICY "允许所有人查询记录" ON bird_records
     FOR SELECT USING (true);
