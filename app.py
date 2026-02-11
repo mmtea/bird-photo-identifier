@@ -1,14 +1,9 @@
 import streamlit as st
-
-try:
-    from PIL import Image, ExifTags
-    HAS_PIL = True
-except ImportError:
-    HAS_PIL = False
-
-from datetime import datetime
-
-from openai import OpenAI
+import os
+import io
+import re
+import json
+from pathlib import Path
 
 # RAW 格式后缀集合（索尼 ARW、佳能 CR2/CR3、尼康 NEF 等）
 RAW_EXTENSIONS = {".arw", ".cr2", ".cr3", ".nef", ".nrw", ".dng", ".raf", ".orf", ".rw2", ".pef", ".srw"}
