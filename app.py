@@ -930,22 +930,26 @@ def delete_record_from_db(record_id: int) -> bool:
     if not base_url or not api_key:
         return False
     try:
-        import http.client
-        from urllib.parse import urlparse
-        parsed = urlparse(base_url)
-        conn = http.client.HTTPSConnection(parsed.hostname, timeout=15)
-        path = f"/rest/v1/bird_records?id=eq.{record_id}"
+        url = f"{base_url}/rest/v1/bird_records?id=eq.{record_id}"
         headers = {
             "apikey": api_key,
             "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+            "Prefer": "return=minimal",
         }
-        conn.request("DELETE", path, headers=headers)
-        resp = conn.getresponse()
-        resp.read()
-        conn.close()
-        return resp.status in (200, 204)
+        req = urllib.request.Request(url, data=b"", headers=headers, method="DELETE")
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            return resp.status in (200, 204)
+    except urllib.error.HTTPError as http_err:
+        error_body = ""
+        try:
+            error_body = http_err.read().decode("utf-8")
+        except Exception:
+            pass
+        st.error(f"删除失败 ({http_err.code}): {error_body[:200]}")
+        return False
     except Exception as exc:
-        st.toast(f"⚠️ 删除失败: {exc}", icon="⚠️")
+        st.error(f"删除失败: {exc}")
         return False
 
 
@@ -1089,8 +1093,10 @@ supabase_client = get_supabase_client()
 # ============================================================
 # 用户昵称（简单身份标识，用于关联历史记录）
 # ============================================================
+# 从 URL 参数恢复昵称（浏览器刷新后保持登录）
 if "user_nickname" not in st.session_state:
-    st.session_state["user_nickname"] = ""
+    saved_nick = st.query_params.get("nick", "")
+    st.session_state["user_nickname"] = saved_nick
 
 nickname_col_left, nickname_col_center, nickname_col_right = st.columns([1, 2, 1])
 with nickname_col_center:
@@ -1109,11 +1115,15 @@ with nickname_col_center:
         )
         if entered_nickname and entered_nickname.strip():
             st.session_state["user_nickname"] = entered_nickname.strip()
+            st.query_params["nick"] = entered_nickname.strip()
             st.rerun()
         if not entered_nickname:
             st.stop()
     else:
         nickname_display = st.session_state["user_nickname"]
+        # 确保 URL 参数同步
+        if st.query_params.get("nick", "") != nickname_display:
+            st.query_params["nick"] = nickname_display
         col_greeting, col_switch = st.columns([3, 1])
         with col_greeting:
             st.markdown(
@@ -1124,6 +1134,7 @@ with nickname_col_center:
         with col_switch:
             if st.button("切换用户", type="secondary", use_container_width=True):
                 st.session_state["user_nickname"] = ""
+                st.query_params.pop("nick", None)
                 st.session_state.pop("identified_cache", None)
                 st.session_state.pop("results_with_bytes", None)
                 st.session_state.pop("zip_bytes", None)
