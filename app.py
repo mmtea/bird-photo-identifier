@@ -3,7 +3,20 @@ import os
 import io
 import re
 import json
+import base64
+import zipfile
+import urllib.request
+import urllib.parse
+import urllib.error
 from pathlib import Path
+from openai import OpenAI
+
+try:
+    from PIL import Image
+    from PIL.ExifTags import TAGS, GPSTAGS
+    HAS_PIL = True
+except ImportError:
+    HAS_PIL = False
 
 # RAW 格式后缀集合（索尼 ARW、佳能 CR2/CR3、尼康 NEF 等）
 RAW_EXTENSIONS = {".arw", ".cr2", ".cr3", ".nef", ".nrw", ".dng", ".raf", ".orf", ".rw2", ".pef", ".srw"}
