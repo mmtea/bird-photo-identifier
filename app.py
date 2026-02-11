@@ -979,6 +979,48 @@ def fetch_user_stats(supabase_client, user_nickname: str) -> dict:
         return {"total": 0, "species": 0, "avg_score": 0, "best_score": 0}
 
 
+def fetch_leaderboard(limit: int = 20) -> list:
+    """查询所有用户的排行榜数据，按鸟种数降序排列"""
+    try:
+        params = "select=user_nickname,chinese_name,score"
+        result = _supabase_request("GET", "bird_records", params=params)
+        records = result if isinstance(result, list) else []
+        if not records:
+            return []
+        # 按用户聚合统计
+        user_data = {}
+        for record in records:
+            nickname = record.get("user_nickname", "")
+            if not nickname:
+                continue
+            if nickname not in user_data:
+                user_data[nickname] = {"species": set(), "total": 0, "scores": []}
+            user_data[nickname]["total"] += 1
+            chinese_name = record.get("chinese_name", "")
+            if chinese_name and chinese_name != "未知鸟类":
+                user_data[nickname]["species"].add(chinese_name)
+            score = record.get("score", 0)
+            if score:
+                user_data[nickname]["scores"].append(score)
+        # 转为列表并排序
+        leaderboard = []
+        for nickname, data in user_data.items():
+            scores = data["scores"]
+            avg_score = round(sum(scores) / len(scores), 1) if scores else 0
+            best_score = max(scores) if scores else 0
+            leaderboard.append({
+                "nickname": nickname,
+                "species": len(data["species"]),
+                "total": data["total"],
+                "avg_score": avg_score,
+                "best_score": best_score,
+            })
+        leaderboard.sort(key=lambda x: (x["species"], x["total"], x["avg_score"]), reverse=True)
+        return leaderboard[:limit]
+    except Exception:
+        return []
+
+
 def sanitize_filename(name: str) -> str:
     """清理文件名中的非法字符"""
     sanitized = re.sub(r'[\\/:*?"<>|]', '_', name)
@@ -1482,7 +1524,6 @@ if "results_with_bytes" in st.session_state:
 # ============================================================
 if supabase_client and user_nickname:
     st.markdown("<br>", unsafe_allow_html=True)
-    st.markdown('<p class="section-title">📚 我的观鸟记录</p>', unsafe_allow_html=True)
 
     # 先处理待删除的记录（确保统计数据和列表都是最新的）
     pending_delete_key = "_pending_delete_record_id"
@@ -1493,98 +1534,151 @@ if supabase_client and user_nickname:
         else:
             st.toast("⚠️ 删除失败，请检查数据库权限", icon="⚠️")
 
-    # 用户统计概览（在删除处理之后，确保数字是最新的）
-    user_stats = fetch_user_stats(supabase_client, user_nickname)
-    if user_stats and user_stats.get("total", 0) > 0:
-        hist_stat_cols = st.columns(4, gap="medium")
-        hist_stat_data = [
-            (str(user_stats["total"]), "累计识别"),
-            (str(user_stats["species"]), "鸟种数"),
-            (str(user_stats["avg_score"]), "平均分"),
-            (str(user_stats["best_score"]), "最高分"),
-        ]
-        for col, (value, label) in zip(hist_stat_cols, hist_stat_data):
-            with col:
-                st.markdown(
-                    f'<div class="stat-card">'
-                    f'<div class="stat-value">{value}</div>'
-                    f'<div class="stat-label">{label}</div>'
-                    f'</div>',
-                    unsafe_allow_html=True,
-                )
+    # 左右两栏布局：左边观鸟记录，右边排行榜
+    history_col, leaderboard_col = st.columns([3, 1], gap="large")
 
-        st.markdown("<br>", unsafe_allow_html=True)
+    # ---- 左栏：我的观鸟记录 ----
+    with history_col:
+        st.markdown('<p class="section-title">📚 我的观鸟记录</p>', unsafe_allow_html=True)
 
-    # 历史记录列表
-    history_records = fetch_user_history(supabase_client, user_nickname)
-    if history_records:
-        with st.expander(f"查看全部历史记录（{len(history_records)} 条）", expanded=True):
-            for row_start in range(0, len(history_records), 5):
-                row_items = history_records[row_start:row_start + 5]
-                hist_cols = st.columns(5)
-                for col_idx, record in enumerate(row_items):
-                    with hist_cols[col_idx]:
-                        # 缩略图
-                        thumb_b64 = record.get("thumbnail_base64", "")
-                        if thumb_b64:
-                            try:
-                                thumb_bytes = base64.b64decode(thumb_b64)
-                                thumb_img = Image.open(io.BytesIO(thumb_bytes))
-                                st.image(thumb_img, use_container_width=True)
-                            except Exception:
+        # 用户统计概览（在删除处理之后，确保数字是最新的）
+        user_stats = fetch_user_stats(supabase_client, user_nickname)
+        if user_stats and user_stats.get("total", 0) > 0:
+            hist_stat_cols = st.columns(4, gap="medium")
+            hist_stat_data = [
+                (str(user_stats["total"]), "累计识别"),
+                (str(user_stats["species"]), "鸟种数"),
+                (str(user_stats["avg_score"]), "平均分"),
+                (str(user_stats["best_score"]), "最高分"),
+            ]
+            for col, (value, label) in zip(hist_stat_cols, hist_stat_data):
+                with col:
+                    st.markdown(
+                        f'<div class="stat-card">'
+                        f'<div class="stat-value">{value}</div>'
+                        f'<div class="stat-label">{label}</div>'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
+
+            st.markdown("<br>", unsafe_allow_html=True)
+
+        # 历史记录列表
+        history_records = fetch_user_history(supabase_client, user_nickname)
+        if history_records:
+            with st.expander(f"查看全部历史记录（{len(history_records)} 条）", expanded=True):
+                for row_start in range(0, len(history_records), 4):
+                    row_items = history_records[row_start:row_start + 4]
+                    hist_cols = st.columns(4)
+                    for col_idx, record in enumerate(row_items):
+                        with hist_cols[col_idx]:
+                            # 缩略图
+                            thumb_b64 = record.get("thumbnail_base64", "")
+                            if thumb_b64:
+                                try:
+                                    thumb_bytes = base64.b64decode(thumb_b64)
+                                    thumb_img = Image.open(io.BytesIO(thumb_bytes))
+                                    st.image(thumb_img, use_container_width=True)
+                                except Exception:
+                                    st.markdown(
+                                        '<div style="height:80px; background:rgba(0,0,0,0.04); '
+                                        'border-radius:10px; display:flex; align-items:center; '
+                                        'justify-content:center; color:#86868b; font-size:20px;">🐦</div>',
+                                        unsafe_allow_html=True,
+                                    )
+                            else:
                                 st.markdown(
                                     '<div style="height:80px; background:rgba(0,0,0,0.04); '
                                     'border-radius:10px; display:flex; align-items:center; '
                                     'justify-content:center; color:#86868b; font-size:20px;">🐦</div>',
                                     unsafe_allow_html=True,
                                 )
-                        else:
+
+                            # 鸟名和评分
+                            hist_score = record.get("score", 0)
+                            hist_score_color = get_score_color(hist_score)
                             st.markdown(
-                                '<div style="height:80px; background:rgba(0,0,0,0.04); '
-                                'border-radius:10px; display:flex; align-items:center; '
-                                'justify-content:center; color:#86868b; font-size:20px;">🐦</div>',
+                                f'<p style="font-size:13px; font-weight:600; color:#1d1d1f; '
+                                f'margin:4px 0 2px; line-height:1.2;">{record.get("chinese_name", "未知")}</p>'
+                                f'<span class="score-pill score-{hist_score_color}" '
+                                f'style="font-size:11px; padding:2px 8px;">'
+                                f'{get_score_emoji(hist_score)} {hist_score}</span>',
                                 unsafe_allow_html=True,
                             )
 
-                        # 鸟名和评分
-                        hist_score = record.get("score", 0)
-                        hist_score_color = get_score_color(hist_score)
-                        st.markdown(
-                            f'<p style="font-size:13px; font-weight:600; color:#1d1d1f; '
-                            f'margin:4px 0 2px; line-height:1.2;">{record.get("chinese_name", "未知")}</p>'
-                            f'<span class="score-pill score-{hist_score_color}" '
-                            f'style="font-size:11px; padding:2px 8px;">'
-                            f'{get_score_emoji(hist_score)} {hist_score}</span>',
-                            unsafe_allow_html=True,
-                        )
+                            # 日期
+                            created_at = record.get("created_at", "")
+                            if created_at:
+                                try:
+                                    date_display = created_at[:10]
+                                    st.markdown(
+                                        f'<p style="font-size:11px; color:#86868b; margin:2px 0 8px;">'
+                                        f'📅 {date_display}</p>',
+                                        unsafe_allow_html=True,
+                                    )
+                                except Exception:
+                                    pass
 
-                        # 日期
-                        created_at = record.get("created_at", "")
-                        if created_at:
-                            try:
-                                date_display = created_at[:10]
-                                st.markdown(
-                                    f'<p style="font-size:11px; color:#86868b; margin:2px 0 8px;">'
-                                    f'📅 {date_display}</p>',
-                                    unsafe_allow_html=True,
-                                )
-                            except Exception:
-                                pass
+                            # 删除按钮
+                            record_id = record.get("id")
+                            if record_id:
+                                if st.button("🗑️", key=f"del_{record_id}",
+                                             help="删除这条记录",
+                                             use_container_width=True):
+                                    st.session_state[pending_delete_key] = record_id
+                                    st.rerun()
+        else:
+            st.markdown(
+                '<p style="text-align:center; color:#86868b; font-size:14px; padding:20px 0;">'
+                '还没有识别记录，上传照片开始你的观鸟之旅吧 🐦</p>',
+                unsafe_allow_html=True,
+            )
 
-                        # 删除按钮（点击后设置待删除 ID，下次 rerun 时执行删除）
-                        record_id = record.get("id")
-                        if record_id:
-                            if st.button("🗑️", key=f"del_{record_id}",
-                                         help="删除这条记录",
-                                         use_container_width=True):
-                                st.session_state[pending_delete_key] = record_id
-                                st.rerun()
-    else:
-        st.markdown(
-            '<p style="text-align:center; color:#86868b; font-size:14px; padding:20px 0;">'
-            '还没有识别记录，上传照片开始你的观鸟之旅吧 🐦</p>',
-            unsafe_allow_html=True,
-        )
+    # ---- 右栏：观鸟排行榜 ----
+    with leaderboard_col:
+        st.markdown('<p class="section-title">🏆 观鸟排行榜</p>', unsafe_allow_html=True)
+
+        leaderboard = fetch_leaderboard()
+        if leaderboard:
+            for rank, entry in enumerate(leaderboard, 1):
+                # 前三名用奖牌 emoji
+                if rank == 1:
+                    rank_display = "🥇"
+                elif rank == 2:
+                    rank_display = "🥈"
+                elif rank == 3:
+                    rank_display = "🥉"
+                else:
+                    rank_display = f"<span style='display:inline-block;width:20px;text-align:center;font-size:13px;color:#86868b;'>{rank}</span>"
+
+                # 当前用户高亮
+                is_current_user = entry["nickname"] == user_nickname
+                bg_color = "rgba(0,122,255,0.08)" if is_current_user else "rgba(0,0,0,0.02)"
+                border = "2px solid rgba(0,122,255,0.3)" if is_current_user else "1px solid rgba(0,0,0,0.06)"
+                name_color = "#007aff" if is_current_user else "#1d1d1f"
+
+                st.markdown(
+                    f'<div style="background:{bg_color}; border:{border}; border-radius:12px; '
+                    f'padding:10px 12px; margin-bottom:8px;">'
+                    f'<div style="display:flex; align-items:center; gap:8px;">'
+                    f'{rank_display}'
+                    f'<div style="flex:1; min-width:0;">'
+                    f'<p style="font-size:14px; font-weight:600; color:{name_color}; '
+                    f'margin:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">'
+                    f'{entry["nickname"]}</p>'
+                    f'<p style="font-size:11px; color:#86868b; margin:2px 0 0;">'
+                    f'🐦 {entry["species"]}种 · 📷 {entry["total"]}张 · ⭐ {entry["avg_score"]}</p>'
+                    f'</div>'
+                    f'</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+        else:
+            st.markdown(
+                '<p style="text-align:center; color:#86868b; font-size:13px; padding:20px 0;">'
+                '暂无排行数据</p>',
+                unsafe_allow_html=True,
+            )
 
 # ============================================================
 # 页脚
