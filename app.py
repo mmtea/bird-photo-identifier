@@ -1129,7 +1129,7 @@ def save_record_to_db(supabase_client, user_nickname: str, result: dict,
         "apikey": db_key,
         "Authorization": f"Bearer {db_key}",
         "Content-Type": "application/json",
-        "Prefer": "return=minimal",
+        "Prefer": "return=representation",
     }
     data = json.dumps(record).encode("utf-8")
     req = urllib.request.Request(url, data=data, headers=headers, method="POST")
@@ -1137,8 +1137,18 @@ def save_record_to_db(supabase_client, user_nickname: str, result: dict,
     try:
         with urllib.request.urlopen(req, timeout=30) as resp:
             status_code = resp.status
-            print(f"[Supabase] 保存成功: {user_nickname} - {result.get('chinese_name', '未知')} (HTTP {status_code})")
-            return True, ""
+            resp_body = resp.read().decode("utf-8", errors="replace")
+            record_id = None
+            try:
+                resp_data = json.loads(resp_body)
+                if isinstance(resp_data, list) and resp_data:
+                    record_id = resp_data[0].get("id")
+                elif isinstance(resp_data, dict):
+                    record_id = resp_data.get("id")
+            except (json.JSONDecodeError, ValueError):
+                pass
+            print(f"[Supabase] 保存成功: {user_nickname} - {result.get('chinese_name', '未知')} (HTTP {status_code}, id={record_id})")
+            return True, "", record_id
     except urllib.error.HTTPError as http_err:
         error_body = ""
         try:
@@ -1147,11 +1157,11 @@ def save_record_to_db(supabase_client, user_nickname: str, result: dict,
             pass
         msg = f"HTTP {http_err.code}: {error_body[:200]}"
         print(f"[Supabase] 保存失败: {msg}")
-        return False, msg
+        return False, msg, None
     except Exception as exc:
         msg = f"{type(exc).__name__}: {exc}"
         print(f"[Supabase] 保存异常: {msg}")
-        return False, msg
+        return False, msg, None
 
 
 @st.cache_data(ttl=30, show_spinner=False)
@@ -1202,6 +1212,33 @@ def delete_record_from_db(record_id: int) -> bool:
         st.error(f"删除失败: {exc}")
         return False
 
+
+def update_record_name_in_db(record_id: int, new_chinese_name: str) -> bool:
+    """更新数据库中某条记录的鸟种中文名"""
+    base_url, api_key = _supabase_config()
+    if not base_url or not api_key:
+        return False
+    try:
+        import http.client
+        from urllib.parse import urlparse
+        parsed = urlparse(base_url)
+        conn = http.client.HTTPSConnection(parsed.hostname, timeout=15)
+        path = f"/rest/v1/bird_records?id=eq.{record_id}"
+        headers = {
+            "apikey": api_key,
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+            "Prefer": "return=minimal",
+        }
+        body = json.dumps({"chinese_name": new_chinese_name}).encode("utf-8")
+        conn.request("PATCH", path, body=body, headers=headers)
+        resp = conn.getresponse()
+        status = resp.status
+        resp.read()
+        conn.close()
+        return status in (200, 204)
+    except Exception:
+        return False
 
 def fetch_user_stats_from_records(records: list) -> dict:
     """从已有的历史记录中计算统计数据（避免额外的数据库请求）"""
@@ -1625,10 +1662,11 @@ with hero_right:
                     # 生成缩略图并保存到数据库（通过闭包传入 URL/Key，不依赖 st.secrets）
                     db_saved = False
                     db_error = ""
+                    db_record_id = None
                     if supabase_client and current_nickname and _sb_url and _sb_key:
                         _update_file_step(fname, "💾 保存识别记录…")
                         thumb_b64 = generate_thumbnail_base64(image_bytes, fname)
-                        db_saved, db_error = save_record_to_db(
+                        db_saved, db_error, db_record_id = save_record_to_db(
                             supabase_client, current_nickname, result, thumb_b64,
                             supabase_url=_sb_url, supabase_key=_sb_key,
                         )
@@ -1636,6 +1674,7 @@ with hero_right:
                         db_error = "Supabase 配置在主线程中读取失败"
                     result["_db_saved"] = db_saved
                     result["_db_error"] = db_error
+                    result["_db_record_id"] = db_record_id if db_saved else None
 
                     _update_file_step(fname, "✅ 完成")
                     return uploaded_file, {
@@ -1802,8 +1841,32 @@ with hero_right:
                         else:
                             st.text("无法预览")
 
+                        # 可编辑的鸟种名称
+                        card_index = row_start + col_idx
+                        edit_key = f"edit_name_{card_index}"
+                        current_name = result.get("chinese_name", "未知")
+                        new_name = st.text_input(
+                            "鸟种名称",
+                            value=current_name,
+                            key=edit_key,
+                            label_visibility="collapsed",
+                            placeholder="输入鸟种中文名",
+                        )
+                        if new_name and new_name != current_name:
+                            result["chinese_name"] = new_name
+                            # 同步更新本地缓存
+                            if card_index < len(results_with_bytes):
+                                results_with_bytes[card_index]["result"]["chinese_name"] = new_name
+                            # 同步更新数据库（如果记录已保存到数据库）
+                            if result.get("_db_saved"):
+                                db_record_id = result.get("_db_record_id")
+                                if db_record_id:
+                                    update_record_name_in_db(db_record_id, new_name)
+                                    fetch_user_history.clear()
+                                    fetch_leaderboard.clear()
+                                    fetch_top_photos.clear()
+                            st.toast(f"✅ 已修改为「{new_name}」", icon="✏️")
                         st.markdown(
-                            f'<p class="bird-name">{result.get("chinese_name", "未知")}</p>'
                             f'<p class="bird-name-en">{result.get("english_name", "")}</p>',
                             unsafe_allow_html=True,
                         )
