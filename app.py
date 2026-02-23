@@ -879,13 +879,18 @@ def identify_bird(image_base64: str, api_key: str, exif_info: dict) -> dict:
                                 "**反作弊：总分>80时重新审视每个分项，不确定则降2-3分。**\n\n"
                                 "只返回一个 JSON 对象，不要返回其他内容。\n"
                                 "{\n"
-                                '  "chinese_name": "最终确定的中文种名",\n'
+                                '  "chinese_name": "最终确定的中文种名（相似度最高的）",\n'
                                 '  "english_name": "英文种名",\n'
                                 '  "order_chinese": "目中文名",\n'
                                 '  "order_english": "目英文名",\n'
                                 '  "family_chinese": "科中文名",\n'
                                 '  "family_english": "科英文名",\n'
                                 '  "confidence": "high/medium/low",\n'
+                                '  "candidates": [\n'
+                                '    {"chinese_name": "第1候选种中文名", "english_name": "英文名", "similarity": 85, "reason": "支持该种的关键特征（15字以内）"},\n'
+                                '    {"chinese_name": "第2候选种中文名", "english_name": "英文名", "similarity": 60, "reason": "支持该种的关键特征（15字以内）"},\n'
+                                '    {"chinese_name": "第3候选种中文名", "english_name": "英文名", "similarity": 30, "reason": "支持该种的关键特征（15字以内）"}\n'
+                                '  ],\n'
                                 '  "identification_basis": "最终选择该种的关键依据，以及排除其他候选种的理由（30字以内）",\n'
                                 '  "excluded_similar_species": "排除的易混淆种及理由（如：非白头鹎，因缺少红色臀部）",\n'
                                 '  "bird_description": "该鸟种详细介绍（100-150字），含外形、习性、生境、分布、常见程度",\n'
@@ -905,7 +910,10 @@ def identify_bird(image_base64: str, api_key: str, exif_info: dict) -> dict:
                                 "3. score 必须等于6个分项之和\n"
                                 "4. 每个分项必须根据照片实际情况独立评判\n"
                                 "5. identification_basis 必须说明为何选择该种而非其他候选种\n"
-                                "6. excluded_similar_species 必须列出至少1个排除的易混淆种及理由"
+                                "6. excluded_similar_species 必须列出至少1个排除的易混淆种及理由\n"
+                                "7. candidates 必须包含2-3个候选鸟种，按 similarity 从高到低排列\n"
+                                "8. similarity 为0-100的整数，表示该候选种与照片中鸟的匹配程度，所有候选种的 similarity 之和不需要等于100\n"
+                                "9. chinese_name 必须与 candidates 中 similarity 最高的候选种一致"
                                 f"{context_block}"
                             ),
                         },
@@ -1841,31 +1849,87 @@ with hero_right:
                         else:
                             st.text("无法预览")
 
-                        # 可编辑的鸟种名称
+                        # 候选鸟种选择（带相似度百分比）
                         card_index = row_start + col_idx
-                        edit_key = f"edit_name_{card_index}"
+                        select_key = f"select_species_{card_index}"
+                        candidates = result.get("candidates", [])
                         current_name = result.get("chinese_name", "未知")
-                        new_name = st.text_input(
-                            "鸟种名称",
-                            value=current_name,
-                            key=edit_key,
-                            label_visibility="collapsed",
-                            placeholder="输入鸟种中文名",
-                        )
-                        if new_name and new_name != current_name:
-                            result["chinese_name"] = new_name
-                            # 同步更新本地缓存
-                            if card_index < len(results_with_bytes):
-                                results_with_bytes[card_index]["result"]["chinese_name"] = new_name
-                            # 同步更新数据库（如果记录已保存到数据库）
-                            if result.get("_db_saved"):
-                                db_record_id = result.get("_db_record_id")
-                                if db_record_id:
-                                    update_record_name_in_db(db_record_id, new_name)
-                                    fetch_user_history.clear()
-                                    fetch_leaderboard.clear()
-                                    fetch_top_photos.clear()
-                            st.toast(f"✅ 已修改为「{new_name}」", icon="✏️")
+
+                        if candidates and len(candidates) > 0:
+                            # 构建选项列表：「中文名 (相似度%)」
+                            option_labels = []
+                            option_names = []
+                            for candidate in candidates:
+                                cname = candidate.get("chinese_name", "未知")
+                                similarity = candidate.get("similarity", 0)
+                                reason = candidate.get("reason", "")
+                                label = f"{cname}（{similarity}%）- {reason}" if reason else f"{cname}（{similarity}%）"
+                                option_labels.append(label)
+                                option_names.append(cname)
+
+                            # 如果当前名称不在候选列表中，添加到首位
+                            if current_name not in option_names:
+                                option_labels.insert(0, f"{current_name}（当前）")
+                                option_names.insert(0, current_name)
+
+                            # 默认选中当前名称
+                            default_index = option_names.index(current_name) if current_name in option_names else 0
+
+                            selected_label = st.selectbox(
+                                "选择鸟种",
+                                options=option_labels,
+                                index=default_index,
+                                key=select_key,
+                                label_visibility="collapsed",
+                            )
+                            selected_index = option_labels.index(selected_label)
+                            selected_name = option_names[selected_index]
+
+                            # 获取选中候选种的英文名
+                            selected_english = result.get("english_name", "")
+                            for candidate in candidates:
+                                if candidate.get("chinese_name") == selected_name:
+                                    selected_english = candidate.get("english_name", selected_english)
+                                    break
+
+                            if selected_name != current_name:
+                                result["chinese_name"] = selected_name
+                                result["english_name"] = selected_english
+                                if card_index < len(results_with_bytes):
+                                    results_with_bytes[card_index]["result"]["chinese_name"] = selected_name
+                                    results_with_bytes[card_index]["result"]["english_name"] = selected_english
+                                if result.get("_db_saved"):
+                                    db_record_id = result.get("_db_record_id")
+                                    if db_record_id:
+                                        update_record_name_in_db(db_record_id, selected_name)
+                                        fetch_user_history.clear()
+                                        fetch_leaderboard.clear()
+                                        fetch_top_photos.clear()
+                                st.toast(f"✅ 已选择「{selected_name}」", icon="✏️")
+                        else:
+                            # 没有候选列表时，保留文本输入框作为兜底
+                            edit_key = f"edit_name_{card_index}"
+                            new_name = st.text_input(
+                                "鸟种名称",
+                                value=current_name,
+                                key=edit_key,
+                                label_visibility="collapsed",
+                                placeholder="输入鸟种中文名",
+                            )
+                            if new_name and new_name != current_name:
+                                result["chinese_name"] = new_name
+                                if card_index < len(results_with_bytes):
+                                    results_with_bytes[card_index]["result"]["chinese_name"] = new_name
+                                if result.get("_db_saved"):
+                                    db_record_id = result.get("_db_record_id")
+                                    if db_record_id:
+                                        update_record_name_in_db(db_record_id, new_name)
+                                        fetch_user_history.clear()
+                                        fetch_leaderboard.clear()
+                                        fetch_top_photos.clear()
+                                st.toast(f"✅ 已修改为「{new_name}」", icon="✏️")
+                            selected_english = result.get("english_name", "")
+
                         st.markdown(
                             f'<p class="bird-name-en">{result.get("english_name", "")}</p>',
                             unsafe_allow_html=True,
