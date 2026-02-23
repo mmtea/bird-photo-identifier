@@ -560,7 +560,7 @@ def image_bytes_to_pil(image_bytes: bytes, filename: str = "") -> "Image.Image |
         return None
 
 
-def encode_image_to_base64(image_bytes: bytes, max_size: int = 1024, filename: str = "") -> str:
+def encode_image_to_base64(image_bytes: bytes, max_size: int = 2048, filename: str = "") -> str:
     """将图片字节编码为 base64 字符串，可选压缩。支持 RAW 格式。"""
     img = image_bytes_to_pil(image_bytes, filename)
     if img is not None:
@@ -770,10 +770,27 @@ def _phase1_candidates(client, image_base64: str, context_block: str) -> list:
     return [], [], ""
 
 
-def identify_bird(image_base64: str, api_key: str, exif_info: dict) -> dict:
-    """单阶段鸟类识别 + 摄影评分（使用 qwen-vl-max-latest）
+def _extract_json_from_text(text: str) -> dict | None:
+    """从 AI 返回的文本中提取 JSON 对象"""
+    cleaned = text.strip()
+    if cleaned.startswith("```"):
+        lines = cleaned.split("\n")
+        lines = [line for line in lines if not line.strip().startswith("```")]
+        cleaned = "\n".join(lines)
+    json_match = re.search(r'\{.*\}', cleaned, re.DOTALL)
+    if json_match:
+        try:
+            return json.loads(json_match.group())
+        except (json.JSONDecodeError, ValueError):
+            return None
+    return None
 
-    通过思维链 prompt 引导 AI 先列候选再做最终判断，一次调用完成。
+def identify_bird(image_base64: str, api_key: str, exif_info: dict) -> dict:
+    """两阶段鸟类识别 + 摄影评分（使用 qwen-vl-max-latest）
+
+    第一阶段：专注鸟种识别，列出候选鸟种并详细分析特征。
+    第二阶段：基于第一阶段的候选结果，做最终判定 + 摄影评分。
+    两阶段分离可显著提升识别准确率。
     """
     client = OpenAI(
         api_key=api_key,
@@ -795,19 +812,20 @@ def identify_bird(image_base64: str, api_key: str, exif_info: dict) -> dict:
         "bird_description": "",
     }
 
+    # ========== 第一阶段：专注鸟种识别 ==========
     try:
-        response = client.chat.completions.create(
+        phase1_response = client.chat.completions.create(
             model="qwen-vl-max-latest",
-            temperature=0.3,
+            temperature=0.1,
             messages=[
                 {
                     "role": "system",
                     "content": (
-                        "你是一位专精中国鸟类的顶级鸟类学家和鸟类摄影评审专家。"
+                        "你是一位专精中国鸟类的顶级鸟类学家。"
                         "你熟悉《中国鸟类野外手册》《中国鸟类分类与分布名录》中记录的所有鸟种，"
                         "精通中国境内1400余种鸟类的辨识要点、分布范围和季节性变化。"
-                        "你能根据细微的羽色差异区分中国常见的易混淆种（如柳莺类、鹀类、鸫类等）。"
-                        "同时你精通鸟类摄影的评判标准，评分非常严格，只有真正出色的照片才能获得高分。"
+                        "你能根据细微的羽色差异区分易混淆种（如柳莺类、鹀类、鸫类、鹟类等）。"
+                        "你的唯一任务是精确识别鸟种，不做其他事情。"
                     ),
                 },
                 {
@@ -820,23 +838,137 @@ def identify_bird(image_base64: str, api_key: str, exif_info: dict) -> dict:
                         {
                             "type": "text",
                             "text": (
-                                "请完成以下任务：\n\n"
-                                "## 任务一：鸟种识别（思维链）\n"
-                                "这张照片拍摄于中国境内，请按以下步骤严格执行：\n\n"
-                                "**步骤1 - 特征观察：** 仔细观察照片中鸟的以下特征：\n"
-                                "- 体型大小和比例（与麻雀/鸽子/乌鸦等常见鸟对比）\n"
-                                "- 喙的形状、长度、粗细和颜色\n"
-                                "- 头部特征（冠羽、眉纹、贯眼纹、眼圈颜色）\n"
-                                "- 上体和下体羽色、翼斑、腰色、尾羽形状和颜色\n"
+                                "请仔细观察这张鸟类照片，按以下步骤严格执行鸟种识别：\n\n"
+                                "**步骤1 - 详细特征观察（必须逐项描述）：**\n"
+                                "- 体型大小（与麻雀/鸽子/乌鸦对比）和体型比例\n"
+                                "- 喙：形状（锥形/钩形/细长/扁平）、长度、粗细、颜色\n"
+                                "- 头部：冠羽有无、眉纹（颜色/粗细）、贯眼纹、眼圈颜色、头顶色\n"
+                                "- 上体：背部羽色、翼斑有无及颜色、腰色\n"
+                                "- 下体：喉/胸/腹/胁部的颜色和斑纹\n"
+                                "- 尾羽：长短、形状（方尾/圆尾/叉尾）、颜色、外侧尾羽特征\n"
                                 "- 腿脚颜色\n"
-                                "- 栖息环境（水域/林地/草地/城市等）\n\n"
-                                "**步骤2 - 候选筛选：** 根据观察到的特征，在脑中列出2-3个最可能的候选鸟种，"
-                                "逐一比对每个候选种的关键区分特征，排除不符合的。\n\n"
-                                "**步骤3 - 最终判定：** 从候选种中选出最匹配的，在 identification_basis 中"
-                                "说明选择理由和排除其他候选种的依据。\n\n"
+                                "- 栖息环境（水域/林地/灌丛/草地/城市等）\n\n"
+                                "**步骤2 - 列出3个候选鸟种：**\n"
+                                "根据观察到的特征，列出最可能的3个候选种。对每个候选种说明：\n"
+                                "1. 照片中哪些特征支持该种\n"
+                                "2. 照片中哪些特征与该种不符（如有）\n"
+                                "3. 该种在中国的分布范围和出现季节\n\n"
+                                "**步骤3 - 逐一排除：**\n"
+                                "对比候选种之间的关键区分特征，结合照片中实际观察到的特征，排除不符合的。\n\n"
+                                "**步骤4 - 最终判定：**\n"
+                                "选出最匹配的鸟种，说明决定性的区分依据。\n\n"
+                                "只返回 JSON，格式如下：\n"
+                                "{\n"
+                                '  "observed_features": "从照片中观察到的所有特征的详细描述",\n'
+                                '  "candidates": [\n'
+                                '    {"chinese_name": "种名", "english_name": "English name", '
+                                '"supporting_features": "支持该种的特征", '
+                                '"conflicting_features": "与该种不符的特征（无则填无）", '
+                                '"distribution": "分布和季节性", "confidence": 80},\n'
+                                '    ...\n'
+                                '  ],\n'
+                                '  "excluded_species": [\n'
+                                '    {"chinese_name": "种名", "reason": "排除理由"}\n'
+                                '  ],\n'
+                                '  "final_species": "最终确定的中文种名",\n'
+                                '  "final_english_name": "最终确定的英文种名",\n'
+                                '  "final_basis": "选择该种的决定性依据（具体到哪个特征区分了它和其他候选种）"\n'
+                                "}\n"
+                                f"{context_block}"
+                            ),
+                        },
+                    ],
+                },
+            ],
+        )
+    except Exception as api_error:
+        import traceback
+        traceback.print_exc()
+        fail_result["score_comment"] = f"AI 接口调用失败(阶段1): {type(api_error).__name__}: {str(api_error)[:100]}"
+        return fail_result
+
+    try:
+        phase1_text = phase1_response.choices[0].message.content.strip()
+    except (AttributeError, IndexError) as parse_error:
+        fail_result["score_comment"] = f"AI 返回数据异常(阶段1): {parse_error}"
+        return fail_result
+
+    phase1_data = _extract_json_from_text(phase1_text)
+    if not phase1_data:
+        fail_result["score_comment"] = "阶段1未返回有效 JSON"
+        return fail_result
+
+    # 提取第一阶段的识别结果
+    final_species = phase1_data.get("final_species", "")
+    final_english = phase1_data.get("final_english_name", "")
+    final_basis = phase1_data.get("final_basis", "")
+    observed_features = phase1_data.get("observed_features", "")
+    candidates = phase1_data.get("candidates", [])
+    excluded = phase1_data.get("excluded_species", [])
+
+    # 构建候选信息摘要，传入第二阶段
+    candidates_summary = ""
+    if candidates:
+        candidate_lines = []
+        for candidate in candidates[:3]:
+            candidate_lines.append(
+                f"- {candidate.get('chinese_name', '?')}({candidate.get('english_name', '?')}): "
+                f"支持特征={candidate.get('supporting_features', '?')}, "
+                f"不符特征={candidate.get('conflicting_features', '无')}, "
+                f"置信度={candidate.get('confidence', '?')}%"
+            )
+        candidates_summary = "\n".join(candidate_lines)
+
+    excluded_summary = ""
+    if excluded:
+        excluded_lines = [f"- {ex.get('chinese_name', '?')}: {ex.get('reason', '?')}" for ex in excluded[:3]]
+        excluded_summary = "\n".join(excluded_lines)
+
+    # ========== 第二阶段：基于候选结果做最终确认 + 摄影评分 ==========
+    phase2_context = (
+        f"\n\n【第一阶段识别结果 - 请基于此做最终确认】\n"
+        f"观察到的特征：{observed_features}\n"
+        f"候选鸟种：\n{candidates_summary}\n"
+    )
+    if excluded_summary:
+        phase2_context += f"已排除的鸟种：\n{excluded_summary}\n"
+    if final_species:
+        phase2_context += f"初步判定：{final_species}（{final_english}）\n判定依据：{final_basis}\n"
+    phase2_context += (
+        "\n请再次仔细观察照片，确认或修正上述判定。"
+        "如果你发现第一阶段的判定有误，请给出你认为正确的鸟种并说明理由。"
+    )
+
+    try:
+        phase2_response = client.chat.completions.create(
+            model="qwen-vl-max-latest",
+            temperature=0.1,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "你是一位专精中国鸟类的顶级鸟类学家和鸟类摄影评审专家。"
+                        "你熟悉《中国鸟类野外手册》《中国鸟类分类与分布名录》中记录的所有鸟种。"
+                        "你的任务是：1) 确认或修正鸟种识别结果；2) 对照片进行专业摄影评分。"
+                        "评分非常严格，只有真正出色的照片才能获得高分。"
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"},
+                        },
+                        {
+                            "type": "text",
+                            "text": (
+                                "请完成以下两个任务：\n\n"
+                                "## 任务一：确认鸟种识别\n"
+                                "再次观察照片，结合第一阶段的分析结果，确认最终鸟种。\n"
+                                f"{phase2_context}\n\n"
                                 "## 任务二：鸟的位置标注\n"
-                                "估算鸟在图片中的位置，用百分比坐标 [x1, y1, x2, y2]（0-100）。\n"
-                                "边界框应紧密包围整只鸟。多只鸟时标注最显眼的。\n\n"
+                                "估算鸟在图片中的位置，用百分比坐标 [x1, y1, x2, y2]（0-100）。\n\n"
                                 "## 任务三：专业摄影评分\n"
                                 "以国际鸟类摄影大赛的标准严格评分。\n\n"
                                 "**【核心评分方法 - 必须严格遵守】**\n"
@@ -869,7 +1001,7 @@ def identify_bird(image_base64: str, api_key: str, exif_info: dict) -> dict:
                                 '  "family_english": "科英文名",\n'
                                 '  "confidence": "high/medium/low",\n'
                                 '  "identification_basis": "最终选择该种的关键依据，以及排除其他候选种的理由（30字以内）",\n'
-                                '  "excluded_similar_species": "排除的易混淆种及理由（如：非白头鹎，因缺少红色臀部）",\n'
+                                '  "excluded_similar_species": "排除的易混淆种及理由",\n'
                                 '  "bird_description": "该鸟种详细介绍（100-150字），含外形、习性、生境、分布、常见程度",\n'
                                 '  "bird_bbox": [x1, y1, x2, y2],\n'
                                 '  "score": 0,\n'
@@ -898,42 +1030,33 @@ def identify_bird(image_base64: str, api_key: str, exif_info: dict) -> dict:
     except Exception as api_error:
         import traceback
         traceback.print_exc()
-        fail_result["score_comment"] = f"AI 接口调用失败: {type(api_error).__name__}: {str(api_error)[:100]}"
+        fail_result["score_comment"] = f"AI 接口调用失败(阶段2): {type(api_error).__name__}: {str(api_error)[:100]}"
         return fail_result
 
     try:
-        result_text = response.choices[0].message.content.strip()
+        phase2_text = phase2_response.choices[0].message.content.strip()
     except (AttributeError, IndexError) as parse_error:
-        fail_result["score_comment"] = f"AI 返回数据异常: {parse_error}"
+        fail_result["score_comment"] = f"AI 返回数据异常(阶段2): {parse_error}"
         return fail_result
 
-    # 提取 JSON：去掉 markdown 代码块包裹，匹配最外层花括号
-    if result_text.startswith("```"):
-        lines = result_text.split("\n")
-        lines = [l for l in lines if not l.strip().startswith("```")]
-        result_text = "\n".join(lines)
-    json_match = re.search(r'\{.*\}', result_text, re.DOTALL)
-    if json_match:
-        try:
-            parsed = json.loads(json_match.group())
-        except (json.JSONDecodeError, ValueError) as json_error:
-            fail_result["score_comment"] = f"AI 返回的 JSON 解析失败: {json_error}"
-            return fail_result
-        dimension_keys = [
-            ("score_sharpness", 20), ("score_composition", 20),
-            ("score_lighting", 20), ("score_background", 15),
-            ("score_pose", 15), ("score_artistry", 10),
-        ]
-        total = 0
-        for key, max_val in dimension_keys:
-            val = max(0, min(max_val, int(parsed.get(key, 0))))
-            parsed[key] = val
-            total += val
-        parsed["score"] = total
-        return parsed
+    parsed = _extract_json_from_text(phase2_text)
+    if not parsed:
+        fail_result["score_comment"] = "阶段2未返回有效 JSON"
+        return fail_result
 
-    fail_result["score_comment"] = "AI 返回内容中未找到有效 JSON"
-    return fail_result
+    # 校正评分
+    dimension_keys = [
+        ("score_sharpness", 20), ("score_composition", 20),
+        ("score_lighting", 20), ("score_background", 15),
+        ("score_pose", 15), ("score_artistry", 10),
+    ]
+    total = 0
+    for key, max_val in dimension_keys:
+        val = max(0, min(max_val, int(parsed.get(key, 0))))
+        parsed[key] = val
+        total += val
+    parsed["score"] = total
+    return parsed
 
 
 def crop_to_bird(img: "Image.Image", bbox: list, padding_ratio: float = 0.15) -> "Image.Image":
