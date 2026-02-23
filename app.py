@@ -981,6 +981,10 @@ def crop_to_bird(img: "Image.Image", bbox: list, padding_ratio: float = 0.15) ->
 # ============================================================
 # 数据库相关函数（通过 Supabase REST API，无需额外依赖）
 # ============================================================
+# 模块级缓存，确保子线程可以安全读取（必须在函数定义之前初始化）
+_SUPABASE_URL_CACHE = None
+_SUPABASE_KEY_CACHE = None
+
 def _supabase_config():
     """获取 Supabase 配置，返回 (url, key) 或 (None, None)。
     结果会缓存到模块级变量，确保子线程也能安全访问。
@@ -994,10 +998,6 @@ def _supabase_config():
         return _SUPABASE_URL_CACHE, _SUPABASE_KEY_CACHE
     except (KeyError, FileNotFoundError):
         return None, None
-
-# 模块级缓存，确保子线程可以安全读取
-_SUPABASE_URL_CACHE = None
-_SUPABASE_KEY_CACHE = None
 
 def _supabase_request(method: str, endpoint: str, body: dict = None,
                       params: str = ""):
@@ -1070,10 +1070,12 @@ def generate_thumbnail_base64(image_bytes: bytes, filename: str = "",
 
 
 def save_record_to_db(supabase_client, user_nickname: str, result: dict,
-                      thumbnail_b64: str) -> bool:
-    """将一条识别记录保存到 Supabase 数据库（线程安全）"""
+                      thumbnail_b64: str) -> tuple:
+    """将一条识别记录保存到 Supabase 数据库（线程安全）。
+    返回 (success: bool, error_msg: str)。
+    """
     if not supabase_client:
-        return False
+        return False, "supabase_client 为空"
     try:
         record = {
             "user_nickname": user_nickname,
@@ -1098,12 +1100,14 @@ def save_record_to_db(supabase_client, user_nickname: str, result: dict,
         result_data = _supabase_request("POST", "bird_records", body=record)
         if result_data is not None:
             print(f"[Supabase] 保存成功: {user_nickname} - {result.get('chinese_name', '未知')}")
-            return True
-        print(f"[Supabase] 保存失败: {user_nickname} - {result.get('chinese_name', '未知')}")
-        return False
+            return True, ""
+        msg = "API 返回空结果（请检查 Supabase URL/Key 和数据库表是否存在）"
+        print(f"[Supabase] 保存失败: {user_nickname} - {result.get('chinese_name', '未知')} - {msg}")
+        return False, msg
     except Exception as exc:
-        print(f"[Supabase] 保存异常: {type(exc).__name__}: {exc}")
-        return False
+        msg = f"{type(exc).__name__}: {exc}"
+        print(f"[Supabase] 保存异常: {msg}")
+        return False, msg
 
 
 @st.cache_data(ttl=30, show_spinner=False)
@@ -1559,10 +1563,12 @@ with hero_right:
 
                     # 生成缩略图并保存到数据库
                     db_saved = False
+                    db_error = ""
                     if supabase_client and current_nickname:
                         thumb_b64 = generate_thumbnail_base64(image_bytes, uploaded_file.name)
-                        db_saved = save_record_to_db(supabase_client, current_nickname, result, thumb_b64)
+                        db_saved, db_error = save_record_to_db(supabase_client, current_nickname, result, thumb_b64)
                     result["_db_saved"] = db_saved
+                    result["_db_error"] = db_error
 
                     return uploaded_file, {
                         "result": result,
@@ -1600,9 +1606,15 @@ with hero_right:
                 progress_text.empty()
 
                 if db_save_failures:
+                    # 收集具体的错误原因
+                    error_details = []
+                    for fkey_check, cache_check in st.session_state["identified_cache"].items():
+                        db_err = cache_check["result"].get("_db_error", "")
+                        if db_err:
+                            error_details.append(db_err)
+                    error_hint = f" 错误详情：{error_details[0]}" if error_details else ""
                     st.warning(
-                        f"⚠️ 以下照片的识别结果未能保存到云端数据库：{', '.join(db_save_failures)}。"
-                        f"请检查 Supabase 配置（SUPABASE_URL 和 SUPABASE_KEY）是否正确。"
+                        f"⚠️ 以下照片的识别结果未能保存到云端数据库：{', '.join(db_save_failures)}。{error_hint}"
                     )
 
                 # 新增记录后清除缓存，确保历史记录和排行榜刷新
