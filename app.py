@@ -1585,31 +1585,49 @@ with hero_right:
                 # 在主线程中读取 Supabase 配置，通过闭包传入子线程（彻底避免子线程访问 st.secrets）
                 _sb_url, _sb_key = _supabase_config()
 
+                # 用于子线程向主线程报告当前步骤的共享状态
+                import threading
+                _file_progress_lock = threading.Lock()
+                _file_progress = {}  # {file_name: "当前步骤描述"}
+
+                def _update_file_step(file_name: str, step: str):
+                    with _file_progress_lock:
+                        _file_progress[file_name] = step
+
                 def _process_single_file(uploaded_file):
                     """在线程中处理单张照片：EXIF提取 + 编码 + AI识别 + 保存数据库"""
+                    fname = uploaded_file.name
+                    _update_file_step(fname, "📂 读取图片信息…")
                     image_bytes = uploaded_file.getvalue()
-                    suffix = Path(uploaded_file.name).suffix.lower()
-                    exif_info = extract_exif_info(image_bytes, uploaded_file.name)
+                    suffix = Path(fname).suffix.lower()
+
+                    _update_file_step(fname, "📷 提取 EXIF 数据…")
+                    exif_info = extract_exif_info(image_bytes, fname)
 
                     if exif_info.get("gps_lat") and exif_info.get("gps_lon"):
+                        _update_file_step(fname, "🗺️ 解析拍摄地点…")
                         geocoded_location = reverse_geocode(exif_info["gps_lat"], exif_info["gps_lon"])
                         if geocoded_location:
                             exif_info["geocoded_location"] = geocoded_location
 
-                    image_base64 = encode_image_to_base64(image_bytes, filename=uploaded_file.name)
+                    _update_file_step(fname, "🔄 压缩编码图片…")
+                    image_base64 = encode_image_to_base64(image_bytes, filename=fname)
+
+                    _update_file_step(fname, "🤖 AI 识别鸟种中…（耗时较长）")
                     result = identify_bird(image_base64, api_key, exif_info)
 
                     shoot_date = ""
                     if exif_info.get("shoot_time"):
                         shoot_date = exif_info["shoot_time"][:8]
                     result["shoot_date"] = shoot_date
-                    result["original_name"] = uploaded_file.name
+                    result["original_name"] = fname
 
                     # 生成缩略图并保存到数据库（通过闭包传入 URL/Key，不依赖 st.secrets）
                     db_saved = False
                     db_error = ""
                     if supabase_client and current_nickname and _sb_url and _sb_key:
-                        thumb_b64 = generate_thumbnail_base64(image_bytes, uploaded_file.name)
+                        _update_file_step(fname, "💾 保存识别记录…")
+                        thumb_b64 = generate_thumbnail_base64(image_bytes, fname)
                         db_saved, db_error = save_record_to_db(
                             supabase_client, current_nickname, result, thumb_b64,
                             supabase_url=_sb_url, supabase_key=_sb_key,
@@ -1619,6 +1637,7 @@ with hero_right:
                     result["_db_saved"] = db_saved
                     result["_db_error"] = db_error
 
+                    _update_file_step(fname, "✅ 完成")
                     return uploaded_file, {
                         "result": result,
                         "image_bytes": image_bytes,
@@ -1635,22 +1654,36 @@ with hero_right:
                         executor.submit(_process_single_file, f): f
                         for f in new_files
                     }
-                    for future in concurrent.futures.as_completed(future_to_file):
-                        completed_count += 1
-                        uploaded_file_done = future_to_file[future]
-                        progress_bar.progress(
-                            completed_count / len(new_files),
-                            text=f"🔍 已完成 {completed_count}/{len(new_files)}",
+                    pending_futures = set(future_to_file.keys())
+                    while pending_futures:
+                        # 每 0.3 秒轮询一次，更新进度显示
+                        done_batch, pending_futures = concurrent.futures.wait(
+                            pending_futures, timeout=0.3,
+                            return_when=concurrent.futures.FIRST_COMPLETED,
                         )
-                        try:
-                            done_file, cache_entry = future.result()
-                            fkey = make_file_key(done_file)
-                            st.session_state["identified_cache"][fkey] = cache_entry
-                            if not cache_entry["result"].get("_db_saved", False):
-                                db_save_failures.append(done_file.name)
-                        except Exception as exc:
-                            failed_name = uploaded_file_done.name
-                            st.toast(f"⚠️ {failed_name} 识别失败: {exc}", icon="⚠️")
+                        # 构建当前所有文件的进度摘要
+                        with _file_progress_lock:
+                            step_lines = []
+                            for fname_key, step_desc in _file_progress.items():
+                                short_name = fname_key if len(fname_key) <= 20 else fname_key[:17] + "…"
+                                step_lines.append(f"**{short_name}**　{step_desc}")
+                        progress_text.markdown("　\n".join(step_lines) if step_lines else "⏳ 准备中…")
+
+                        for future in done_batch:
+                            completed_count += 1
+                            progress_bar.progress(
+                                completed_count / len(new_files),
+                                text=f"🔍 已完成 {completed_count}/{len(new_files)}",
+                            )
+                            try:
+                                done_file, cache_entry = future.result()
+                                fkey = make_file_key(done_file)
+                                st.session_state["identified_cache"][fkey] = cache_entry
+                                if not cache_entry["result"].get("_db_saved", False):
+                                    db_save_failures.append(done_file.name)
+                            except Exception as exc:
+                                failed_name = future_to_file[future].name
+                                st.toast(f"⚠️ {failed_name} 识别失败: {exc}", icon="⚠️")
 
                 progress_text.empty()
 
