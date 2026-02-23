@@ -982,18 +982,29 @@ def crop_to_bird(img: "Image.Image", bbox: list, padding_ratio: float = 0.15) ->
 # 数据库相关函数（通过 Supabase REST API，无需额外依赖）
 # ============================================================
 def _supabase_config():
-    """获取 Supabase 配置，返回 (url, key) 或 (None, None)"""
+    """获取 Supabase 配置，返回 (url, key) 或 (None, None)。
+    结果会缓存到模块级变量，确保子线程也能安全访问。
+    """
+    global _SUPABASE_URL_CACHE, _SUPABASE_KEY_CACHE
+    if _SUPABASE_URL_CACHE and _SUPABASE_KEY_CACHE:
+        return _SUPABASE_URL_CACHE, _SUPABASE_KEY_CACHE
     try:
-        return st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"]
+        _SUPABASE_URL_CACHE = st.secrets["SUPABASE_URL"]
+        _SUPABASE_KEY_CACHE = st.secrets["SUPABASE_KEY"]
+        return _SUPABASE_URL_CACHE, _SUPABASE_KEY_CACHE
     except (KeyError, FileNotFoundError):
         return None, None
 
+# 模块级缓存，确保子线程可以安全读取
+_SUPABASE_URL_CACHE = None
+_SUPABASE_KEY_CACHE = None
 
 def _supabase_request(method: str, endpoint: str, body: dict = None,
                       params: str = ""):
     """通用 Supabase REST API 请求（线程安全，不调用 Streamlit API）"""
     base_url, api_key = _supabase_config()
     if not base_url or not api_key:
+        print(f"[Supabase] 配置缺失，跳过 {method} {endpoint}")
         return None
 
     url = f"{base_url}/rest/v1/{endpoint}"
@@ -1028,9 +1039,10 @@ def _supabase_request(method: str, endpoint: str, body: dict = None,
         print(f"[Supabase] {method} {endpoint} 异常: {type(exc).__name__}: {exc}")
         return None
 
-
 def get_supabase_client():
-    """检查 Supabase 是否可用，返回 True/False（兼容原有调用方式）"""
+    """检查 Supabase 是否可用，返回 True/False（兼容原有调用方式）。
+    同时在主线程中预加载配置到缓存。
+    """
     base_url, api_key = _supabase_config()
     return True if (base_url and api_key) else None
 
@@ -1522,6 +1534,8 @@ with hero_right:
                 progress_text = st.empty()
 
                 current_nickname = st.session_state.get("user_nickname", "")
+                # 在主线程中预加载 Supabase 配置到缓存，确保子线程可用
+                _supabase_config()
 
                 def _process_single_file(uploaded_file):
                     """在线程中处理单张照片：EXIF提取 + 编码 + AI识别 + 保存数据库"""
@@ -1544,9 +1558,11 @@ with hero_right:
                     result["original_name"] = uploaded_file.name
 
                     # 生成缩略图并保存到数据库
+                    db_saved = False
                     if supabase_client and current_nickname:
                         thumb_b64 = generate_thumbnail_base64(image_bytes, uploaded_file.name)
-                        save_record_to_db(supabase_client, current_nickname, result, thumb_b64)
+                        db_saved = save_record_to_db(supabase_client, current_nickname, result, thumb_b64)
+                    result["_db_saved"] = db_saved
 
                     return uploaded_file, {
                         "result": result,
@@ -1557,6 +1573,7 @@ with hero_right:
                 # 并发识别（最多 3 个线程，避免 API 限流）
                 max_workers = min(3, len(new_files))
                 completed_count = 0
+                db_save_failures = []
 
                 with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
                     future_to_file = {
@@ -1574,11 +1591,19 @@ with hero_right:
                             done_file, cache_entry = future.result()
                             fkey = make_file_key(done_file)
                             st.session_state["identified_cache"][fkey] = cache_entry
+                            if not cache_entry["result"].get("_db_saved", False):
+                                db_save_failures.append(done_file.name)
                         except Exception as exc:
                             failed_name = uploaded_file_done.name
                             st.toast(f"⚠️ {failed_name} 识别失败: {exc}", icon="⚠️")
 
                 progress_text.empty()
+
+                if db_save_failures:
+                    st.warning(
+                        f"⚠️ 以下照片的识别结果未能保存到云端数据库：{', '.join(db_save_failures)}。"
+                        f"请检查 Supabase 配置（SUPABASE_URL 和 SUPABASE_KEY）是否正确。"
+                    )
 
                 # 新增记录后清除缓存，确保历史记录和排行榜刷新
                 fetch_user_history.clear()
