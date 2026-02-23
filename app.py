@@ -1000,9 +1000,15 @@ def _supabase_config():
         return None, None
 
 def _supabase_request(method: str, endpoint: str, body: dict = None,
-                      params: str = ""):
-    """通用 Supabase REST API 请求（线程安全，不调用 Streamlit API）"""
-    base_url, api_key = _supabase_config()
+                      params: str = "", override_url: str = None,
+                      override_key: str = None):
+    """通用 Supabase REST API 请求（线程安全，不调用 Streamlit API）。
+    可通过 override_url/override_key 直接传入配置，用于子线程调用。
+    """
+    if override_url and override_key:
+        base_url, api_key = override_url, override_key
+    else:
+        base_url, api_key = _supabase_config()
     if not base_url or not api_key:
         print(f"[Supabase] 配置缺失，跳过 {method} {endpoint}")
         return None
@@ -1077,9 +1083,11 @@ def generate_thumbnail_base64(image_bytes: bytes, filename: str = "",
 
 
 def save_record_to_db(supabase_client, user_nickname: str, result: dict,
-                      thumbnail_b64: str) -> tuple:
+                      thumbnail_b64: str,
+                      supabase_url: str = None, supabase_key: str = None) -> tuple:
     """将一条识别记录保存到 Supabase 数据库（线程安全）。
     返回 (success: bool, error_msg: str)。
+    可通过 supabase_url/supabase_key 直接传入配置，避免子线程访问 st.secrets。
     """
     if not supabase_client:
         return False, "supabase_client 为空"
@@ -1104,7 +1112,9 @@ def save_record_to_db(supabase_client, user_nickname: str, result: dict,
             "shoot_date": result.get("shoot_date", ""),
             "thumbnail_base64": thumbnail_b64,
         }
-        result_data = _supabase_request("POST", "bird_records", body=record)
+        result_data = _supabase_request("POST", "bird_records", body=record,
+                                        override_url=supabase_url,
+                                        override_key=supabase_key)
         if result_data is not None:
             print(f"[Supabase] 保存成功: {user_nickname} - {result.get('chinese_name', '未知')}")
             return True, ""
@@ -1545,8 +1555,8 @@ with hero_right:
                 progress_text = st.empty()
 
                 current_nickname = st.session_state.get("user_nickname", "")
-                # 在主线程中预加载 Supabase 配置到缓存，确保子线程可用
-                _supabase_config()
+                # 在主线程中读取 Supabase 配置，通过闭包传入子线程（彻底避免子线程访问 st.secrets）
+                _sb_url, _sb_key = _supabase_config()
 
                 def _process_single_file(uploaded_file):
                     """在线程中处理单张照片：EXIF提取 + 编码 + AI识别 + 保存数据库"""
@@ -1568,12 +1578,17 @@ with hero_right:
                     result["shoot_date"] = shoot_date
                     result["original_name"] = uploaded_file.name
 
-                    # 生成缩略图并保存到数据库
+                    # 生成缩略图并保存到数据库（通过闭包传入 URL/Key，不依赖 st.secrets）
                     db_saved = False
                     db_error = ""
-                    if supabase_client and current_nickname:
+                    if supabase_client and current_nickname and _sb_url and _sb_key:
                         thumb_b64 = generate_thumbnail_base64(image_bytes, uploaded_file.name)
-                        db_saved, db_error = save_record_to_db(supabase_client, current_nickname, result, thumb_b64)
+                        db_saved, db_error = save_record_to_db(
+                            supabase_client, current_nickname, result, thumb_b64,
+                            supabase_url=_sb_url, supabase_key=_sb_key,
+                        )
+                    elif not _sb_url or not _sb_key:
+                        db_error = "Supabase 配置在主线程中读取失败"
                     result["_db_saved"] = db_saved
                     result["_db_error"] = db_error
 
