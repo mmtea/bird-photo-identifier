@@ -991,7 +991,7 @@ def _supabase_config():
 
 def _supabase_request(method: str, endpoint: str, body: dict = None,
                       params: str = ""):
-    """通用 Supabase REST API 请求"""
+    """通用 Supabase REST API 请求（线程安全，不调用 Streamlit API）"""
     base_url, api_key = _supabase_config()
     if not base_url or not api_key:
         return None
@@ -1022,9 +1022,10 @@ def _supabase_request(method: str, endpoint: str, body: dict = None,
             error_body = http_err.read().decode("utf-8")
         except Exception:
             pass
-        st.toast(f"⚠️ 数据库请求失败: {http_err.code} {error_body[:100]}", icon="⚠️")
+        print(f"[Supabase] {method} {endpoint} 失败: {http_err.code} {error_body[:200]}")
         return None
-    except Exception:
+    except Exception as exc:
+        print(f"[Supabase] {method} {endpoint} 异常: {type(exc).__name__}: {exc}")
         return None
 
 
@@ -1058,7 +1059,7 @@ def generate_thumbnail_base64(image_bytes: bytes, filename: str = "",
 
 def save_record_to_db(supabase_client, user_nickname: str, result: dict,
                       thumbnail_b64: str) -> bool:
-    """将一条识别记录保存到 Supabase 数据库"""
+    """将一条识别记录保存到 Supabase 数据库（线程安全）"""
     if not supabase_client:
         return False
     try:
@@ -1083,8 +1084,13 @@ def save_record_to_db(supabase_client, user_nickname: str, result: dict,
             "thumbnail_base64": thumbnail_b64,
         }
         result_data = _supabase_request("POST", "bird_records", body=record)
-        return result_data is not None
-    except Exception:
+        if result_data is not None:
+            print(f"[Supabase] 保存成功: {user_nickname} - {result.get('chinese_name', '未知')}")
+            return True
+        print(f"[Supabase] 保存失败: {user_nickname} - {result.get('chinese_name', '未知')}")
+        return False
+    except Exception as exc:
+        print(f"[Supabase] 保存异常: {type(exc).__name__}: {exc}")
         return False
 
 
