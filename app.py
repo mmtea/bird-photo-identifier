@@ -1023,7 +1023,14 @@ def _supabase_request(method: str, endpoint: str, body: dict = None,
 
     try:
         with urllib.request.urlopen(req, timeout=30) as resp:
+            status_code = resp.status
             response_body = resp.read().decode("utf-8")
+            print(f"[Supabase] {method} {endpoint} 状态码: {status_code} 响应长度: {len(response_body)}")
+            # POST 插入成功时返回 201，即使响应体为空也视为成功
+            if method == "POST" and status_code in (200, 201):
+                if response_body:
+                    return json.loads(response_body)
+                return {"_inserted": True}
             if response_body:
                 return json.loads(response_body)
             return None
