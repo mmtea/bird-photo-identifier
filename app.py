@@ -1085,41 +1085,59 @@ def generate_thumbnail_base64(image_bytes: bytes, filename: str = "",
 def save_record_to_db(supabase_client, user_nickname: str, result: dict,
                       thumbnail_b64: str,
                       supabase_url: str = None, supabase_key: str = None) -> tuple:
-    """将一条识别记录保存到 Supabase 数据库（线程安全）。
+    """将一条识别记录保存到 Supabase 数据库（完全线程安全，自包含 HTTP 请求）。
     返回 (success: bool, error_msg: str)。
-    可通过 supabase_url/supabase_key 直接传入配置，避免子线程访问 st.secrets。
+    必须通过 supabase_url/supabase_key 直接传入配置。
     """
-    if not supabase_client:
-        return False, "supabase_client 为空"
+    db_url = supabase_url
+    db_key = supabase_key
+    if not db_url or not db_key:
+        return False, "Supabase URL 或 Key 未传入"
+
+    record = {
+        "user_nickname": user_nickname,
+        "chinese_name": result.get("chinese_name", "未知鸟类"),
+        "english_name": result.get("english_name", ""),
+        "order_chinese": result.get("order_chinese", ""),
+        "family_chinese": result.get("family_chinese", ""),
+        "confidence": result.get("confidence", "low"),
+        "score": result.get("score", 0),
+        "score_sharpness": result.get("score_sharpness", 0),
+        "score_composition": result.get("score_composition", 0),
+        "score_lighting": result.get("score_lighting", 0),
+        "score_background": result.get("score_background", 0),
+        "score_pose": result.get("score_pose", 0),
+        "score_artistry": result.get("score_artistry", 0),
+        "score_comment": result.get("score_comment", ""),
+        "identification_basis": result.get("identification_basis", ""),
+        "bird_description": result.get("bird_description", ""),
+        "shoot_date": result.get("shoot_date", ""),
+        "thumbnail_base64": thumbnail_b64,
+    }
+
+    url = f"{db_url}/rest/v1/bird_records"
+    headers = {
+        "apikey": db_key,
+        "Authorization": f"Bearer {db_key}",
+        "Content-Type": "application/json",
+        "Prefer": "return=minimal",
+    }
+    data = json.dumps(record).encode("utf-8")
+    req = urllib.request.Request(url, data=data, headers=headers, method="POST")
+
     try:
-        record = {
-            "user_nickname": user_nickname,
-            "chinese_name": result.get("chinese_name", "未知鸟类"),
-            "english_name": result.get("english_name", ""),
-            "order_chinese": result.get("order_chinese", ""),
-            "family_chinese": result.get("family_chinese", ""),
-            "confidence": result.get("confidence", "low"),
-            "score": result.get("score", 0),
-            "score_sharpness": result.get("score_sharpness", 0),
-            "score_composition": result.get("score_composition", 0),
-            "score_lighting": result.get("score_lighting", 0),
-            "score_background": result.get("score_background", 0),
-            "score_pose": result.get("score_pose", 0),
-            "score_artistry": result.get("score_artistry", 0),
-            "score_comment": result.get("score_comment", ""),
-            "identification_basis": result.get("identification_basis", ""),
-            "bird_description": result.get("bird_description", ""),
-            "shoot_date": result.get("shoot_date", ""),
-            "thumbnail_base64": thumbnail_b64,
-        }
-        result_data = _supabase_request("POST", "bird_records", body=record,
-                                        override_url=supabase_url,
-                                        override_key=supabase_key)
-        if result_data is not None:
-            print(f"[Supabase] 保存成功: {user_nickname} - {result.get('chinese_name', '未知')}")
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            status_code = resp.status
+            print(f"[Supabase] 保存成功: {user_nickname} - {result.get('chinese_name', '未知')} (HTTP {status_code})")
             return True, ""
-        msg = "API 返回空结果（请检查 Supabase URL/Key 和数据库表是否存在）"
-        print(f"[Supabase] 保存失败: {user_nickname} - {result.get('chinese_name', '未知')} - {msg}")
+    except urllib.error.HTTPError as http_err:
+        error_body = ""
+        try:
+            error_body = http_err.read().decode("utf-8")
+        except Exception:
+            pass
+        msg = f"HTTP {http_err.code}: {error_body[:200]}"
+        print(f"[Supabase] 保存失败: {msg}")
         return False, msg
     except Exception as exc:
         msg = f"{type(exc).__name__}: {exc}"
