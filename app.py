@@ -782,107 +782,131 @@ def identify_bird(image_base64: str, api_key: str, exif_info: dict) -> dict:
 
     context_block, season = _build_context_block(exif_info)
 
-    response = client.chat.completions.create(
-        model="qwen-vl-max-latest",
-        temperature=0.3,
-        messages=[
-            {
-                "role": "system",
-                "content": (
-                    "你是一位专精中国鸟类的顶级鸟类学家和鸟类摄影评审专家。"
-                    "你熟悉《中国鸟类野外手册》《中国鸟类分类与分布名录》中记录的所有鸟种，"
-                    "精通中国境内1400余种鸟类的辨识要点、分布范围和季节性变化。"
-                    "你能根据细微的羽色差异区分中国常见的易混淆种（如柳莺类、鹀类、鸫类等）。"
-                    "同时你精通鸟类摄影的评判标准，评分非常严格，只有真正出色的照片才能获得高分。"
-                ),
-            },
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "image_url",
-                        "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"},
-                    },
-                    {
-                        "type": "text",
-                        "text": (
-                            "请完成以下任务：\n\n"
-                            "## 任务一：鸟种识别（思维链）\n"
-                            "这张照片拍摄于中国境内，请按以下步骤严格执行：\n\n"
-                            "**步骤1 - 特征观察：** 仔细观察照片中鸟的以下特征：\n"
-                            "- 体型大小和比例（与麻雀/鸽子/乌鸦等常见鸟对比）\n"
-                            "- 喙的形状、长度、粗细和颜色\n"
-                            "- 头部特征（冠羽、眉纹、贯眼纹、眼圈颜色）\n"
-                            "- 上体和下体羽色、翼斑、腰色、尾羽形状和颜色\n"
-                            "- 腿脚颜色\n"
-                            "- 栖息环境（水域/林地/草地/城市等）\n\n"
-                            "**步骤2 - 候选筛选：** 根据观察到的特征，在脑中列出2-3个最可能的候选鸟种，"
-                            "逐一比对每个候选种的关键区分特征，排除不符合的。\n\n"
-                            "**步骤3 - 最终判定：** 从候选种中选出最匹配的，在 identification_basis 中"
-                            "说明选择理由和排除其他候选种的依据。\n\n"
-                            "## 任务二：鸟的位置标注\n"
-                            "估算鸟在图片中的位置，用百分比坐标 [x1, y1, x2, y2]（0-100）。\n"
-                            "边界框应紧密包围整只鸟。多只鸟时标注最显眼的。\n\n"
-                            "## 任务三：专业摄影评分\n"
-                            "以国际鸟类摄影大赛的标准严格评分。\n\n"
-                            "**【核心评分方法 - 必须严格遵守】**\n"
-                            "每个维度从该维度满分的50%开始，根据优缺点加减分：\n"
-                            "- 有明显优点：+1到+3分\n"
-                            "- 有明显缺点：-1到-5分\n"
-                            "- 有严重缺陷：直接降到该维度满分的20%以下\n"
-                            "- 只有极其出色才能超过该维度满分的80%\n\n"
-                            "**1. 主体清晰度（0-20分，起始10分）**\n"
-                            "鸟眼锐利+2/模糊-3；羽毛纤毫毕现+3/模糊-3；运动模糊-2到-4\n\n"
-                            "**2. 构图与美感（0-20分，起始10分）**\n"
-                            "三分法/黄金分割+2；居中平庸-2；主体裁切-3到-5\n\n"
-                            "**3. 光线与色彩（0-20分，起始10分）**\n"
-                            "黄金时段+3；正午顶光-2；过曝/欠曝-3\n\n"
-                            "**4. 背景与环境（0-15分，起始7分）**\n"
-                            "奶油虚化+3；杂乱-3；干扰元素-2到-4\n\n"
-                            "**5. 姿态与瞬间（0-15分，起始7分）**\n"
-                            "行为瞬间+3到+5；普通静立不加分；背对/遮挡-2到-4\n\n"
-                            "**6. 艺术性与故事感（0-10分，起始3分）**\n"
-                            "纯记录照2-3分；有氛围4-5分；有意境6-7分；8+需强烈共鸣\n\n"
-                            "**总分分布：** 90+百里挑一；75-89优秀约10%；55-74大多数；40-54有不足；<40很差\n\n"
-                            "**反作弊：总分>80时重新审视每个分项，不确定则降2-3分。**\n\n"
-                            "只返回一个 JSON 对象，不要返回其他内容。\n"
-                            "{\n"
-                            '  "chinese_name": "最终确定的中文种名",\n'
-                            '  "english_name": "英文种名",\n'
-                            '  "order_chinese": "目中文名",\n'
-                            '  "order_english": "目英文名",\n'
-                            '  "family_chinese": "科中文名",\n'
-                            '  "family_english": "科英文名",\n'
-                            '  "confidence": "high/medium/low",\n'
-                            '  "identification_basis": "最终选择该种的关键依据，以及排除其他候选种的理由（30字以内）",\n'
-                            '  "excluded_similar_species": "排除的易混淆种及理由（如：非白头鹎，因缺少红色臀部）",\n'
-                            '  "bird_description": "该鸟种详细介绍（100-150字），含外形、习性、生境、分布、常见程度",\n'
-                            '  "bird_bbox": [x1, y1, x2, y2],\n'
-                            '  "score": 0,\n'
-                            '  "score_sharpness": 0,\n'
-                            '  "score_composition": 0,\n'
-                            '  "score_lighting": 0,\n'
-                            '  "score_background": 0,\n'
-                            '  "score_pose": 0,\n'
-                            '  "score_artistry": 0,\n'
-                            '  "score_comment": "照片点评（30字以内）"\n'
-                            "}\n\n"
-                            "要求：\n"
-                            "1. 必须精确到具体鸟种，目和科使用正确分类学名称\n"
-                            "2. 如果无法识别，chinese_name 填 \"未知鸟类\"\n"
-                            "3. score 必须等于6个分项之和\n"
-                            "4. 每个分项必须根据照片实际情况独立评判\n"
-                            "5. identification_basis 必须说明为何选择该种而非其他候选种\n"
-                            "6. excluded_similar_species 必须列出至少1个排除的易混淆种及理由"
-                            f"{context_block}"
-                        ),
-                    },
-                ],
-            },
-        ],
-    )
+    fail_result = {
+        "chinese_name": "未知鸟类", "english_name": "unknown",
+        "order_chinese": "未知目", "order_english": "Unknown",
+        "family_chinese": "未知科", "family_english": "Unknown",
+        "confidence": "low", "score": 0,
+        "score_sharpness": 0, "score_composition": 0,
+        "score_lighting": 0, "score_background": 0,
+        "score_pose": 0, "score_artistry": 0,
+        "score_comment": "识别失败",
+        "identification_basis": "",
+        "bird_description": "",
+    }
 
-    result_text = response.choices[0].message.content.strip()
+    try:
+        response = client.chat.completions.create(
+            model="qwen-vl-max-latest",
+            temperature=0.3,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "你是一位专精中国鸟类的顶级鸟类学家和鸟类摄影评审专家。"
+                        "你熟悉《中国鸟类野外手册》《中国鸟类分类与分布名录》中记录的所有鸟种，"
+                        "精通中国境内1400余种鸟类的辨识要点、分布范围和季节性变化。"
+                        "你能根据细微的羽色差异区分中国常见的易混淆种（如柳莺类、鹀类、鸫类等）。"
+                        "同时你精通鸟类摄影的评判标准，评分非常严格，只有真正出色的照片才能获得高分。"
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"},
+                        },
+                        {
+                            "type": "text",
+                            "text": (
+                                "请完成以下任务：\n\n"
+                                "## 任务一：鸟种识别（思维链）\n"
+                                "这张照片拍摄于中国境内，请按以下步骤严格执行：\n\n"
+                                "**步骤1 - 特征观察：** 仔细观察照片中鸟的以下特征：\n"
+                                "- 体型大小和比例（与麻雀/鸽子/乌鸦等常见鸟对比）\n"
+                                "- 喙的形状、长度、粗细和颜色\n"
+                                "- 头部特征（冠羽、眉纹、贯眼纹、眼圈颜色）\n"
+                                "- 上体和下体羽色、翼斑、腰色、尾羽形状和颜色\n"
+                                "- 腿脚颜色\n"
+                                "- 栖息环境（水域/林地/草地/城市等）\n\n"
+                                "**步骤2 - 候选筛选：** 根据观察到的特征，在脑中列出2-3个最可能的候选鸟种，"
+                                "逐一比对每个候选种的关键区分特征，排除不符合的。\n\n"
+                                "**步骤3 - 最终判定：** 从候选种中选出最匹配的，在 identification_basis 中"
+                                "说明选择理由和排除其他候选种的依据。\n\n"
+                                "## 任务二：鸟的位置标注\n"
+                                "估算鸟在图片中的位置，用百分比坐标 [x1, y1, x2, y2]（0-100）。\n"
+                                "边界框应紧密包围整只鸟。多只鸟时标注最显眼的。\n\n"
+                                "## 任务三：专业摄影评分\n"
+                                "以国际鸟类摄影大赛的标准严格评分。\n\n"
+                                "**【核心评分方法 - 必须严格遵守】**\n"
+                                "每个维度从该维度满分的50%开始，根据优缺点加减分：\n"
+                                "- 有明显优点：+1到+3分\n"
+                                "- 有明显缺点：-1到-5分\n"
+                                "- 有严重缺陷：直接降到该维度满分的20%以下\n"
+                                "- 只有极其出色才能超过该维度满分的80%\n\n"
+                                "**1. 主体清晰度（0-20分，起始10分）**\n"
+                                "鸟眼锐利+2/模糊-3；羽毛纤毫毕现+3/模糊-3；运动模糊-2到-4\n\n"
+                                "**2. 构图与美感（0-20分，起始10分）**\n"
+                                "三分法/黄金分割+2；居中平庸-2；主体裁切-3到-5\n\n"
+                                "**3. 光线与色彩（0-20分，起始10分）**\n"
+                                "黄金时段+3；正午顶光-2；过曝/欠曝-3\n\n"
+                                "**4. 背景与环境（0-15分，起始7分）**\n"
+                                "奶油虚化+3；杂乱-3；干扰元素-2到-4\n\n"
+                                "**5. 姿态与瞬间（0-15分，起始7分）**\n"
+                                "行为瞬间+3到+5；普通静立不加分；背对/遮挡-2到-4\n\n"
+                                "**6. 艺术性与故事感（0-10分，起始3分）**\n"
+                                "纯记录照2-3分；有氛围4-5分；有意境6-7分；8+需强烈共鸣\n\n"
+                                "**总分分布：** 90+百里挑一；75-89优秀约10%；55-74大多数；40-54有不足；<40很差\n\n"
+                                "**反作弊：总分>80时重新审视每个分项，不确定则降2-3分。**\n\n"
+                                "只返回一个 JSON 对象，不要返回其他内容。\n"
+                                "{\n"
+                                '  "chinese_name": "最终确定的中文种名",\n'
+                                '  "english_name": "英文种名",\n'
+                                '  "order_chinese": "目中文名",\n'
+                                '  "order_english": "目英文名",\n'
+                                '  "family_chinese": "科中文名",\n'
+                                '  "family_english": "科英文名",\n'
+                                '  "confidence": "high/medium/low",\n'
+                                '  "identification_basis": "最终选择该种的关键依据，以及排除其他候选种的理由（30字以内）",\n'
+                                '  "excluded_similar_species": "排除的易混淆种及理由（如：非白头鹎，因缺少红色臀部）",\n'
+                                '  "bird_description": "该鸟种详细介绍（100-150字），含外形、习性、生境、分布、常见程度",\n'
+                                '  "bird_bbox": [x1, y1, x2, y2],\n'
+                                '  "score": 0,\n'
+                                '  "score_sharpness": 0,\n'
+                                '  "score_composition": 0,\n'
+                                '  "score_lighting": 0,\n'
+                                '  "score_background": 0,\n'
+                                '  "score_pose": 0,\n'
+                                '  "score_artistry": 0,\n'
+                                '  "score_comment": "照片点评（30字以内）"\n'
+                                "}\n\n"
+                                "要求：\n"
+                                "1. 必须精确到具体鸟种，目和科使用正确分类学名称\n"
+                                "2. 如果无法识别，chinese_name 填 \"未知鸟类\"\n"
+                                "3. score 必须等于6个分项之和\n"
+                                "4. 每个分项必须根据照片实际情况独立评判\n"
+                                "5. identification_basis 必须说明为何选择该种而非其他候选种\n"
+                                "6. excluded_similar_species 必须列出至少1个排除的易混淆种及理由"
+                                f"{context_block}"
+                            ),
+                        },
+                    ],
+                },
+            ],
+        )
+    except Exception as api_error:
+        import traceback
+        traceback.print_exc()
+        fail_result["score_comment"] = f"AI 接口调用失败: {type(api_error).__name__}: {str(api_error)[:100]}"
+        return fail_result
+
+    try:
+        result_text = response.choices[0].message.content.strip()
+    except (AttributeError, IndexError) as parse_error:
+        fail_result["score_comment"] = f"AI 返回数据异常: {parse_error}"
+        return fail_result
+
     # 提取 JSON：去掉 markdown 代码块包裹，匹配最外层花括号
     if result_text.startswith("```"):
         lines = result_text.split("\n")
@@ -890,7 +914,11 @@ def identify_bird(image_base64: str, api_key: str, exif_info: dict) -> dict:
         result_text = "\n".join(lines)
     json_match = re.search(r'\{.*\}', result_text, re.DOTALL)
     if json_match:
-        parsed = json.loads(json_match.group())
+        try:
+            parsed = json.loads(json_match.group())
+        except (json.JSONDecodeError, ValueError) as json_error:
+            fail_result["score_comment"] = f"AI 返回的 JSON 解析失败: {json_error}"
+            return fail_result
         dimension_keys = [
             ("score_sharpness", 20), ("score_composition", 20),
             ("score_lighting", 20), ("score_background", 15),
@@ -904,18 +932,8 @@ def identify_bird(image_base64: str, api_key: str, exif_info: dict) -> dict:
         parsed["score"] = total
         return parsed
 
-    return {
-        "chinese_name": "未知鸟类", "english_name": "unknown",
-        "order_chinese": "未知目", "order_english": "Unknown",
-        "family_chinese": "未知科", "family_english": "Unknown",
-        "confidence": "low", "score": 0,
-        "score_sharpness": 0, "score_composition": 0,
-        "score_lighting": 0, "score_background": 0,
-        "score_pose": 0, "score_artistry": 0,
-        "score_comment": "识别失败",
-        "identification_basis": "",
-        "bird_description": "",
-    }
+    fail_result["score_comment"] = "AI 返回内容中未找到有效 JSON"
+    return fail_result
 
 
 def crop_to_bird(img: "Image.Image", bbox: list, padding_ratio: float = 0.15) -> "Image.Image":
@@ -1497,6 +1515,8 @@ with hero_right:
                 progress_bar = st.progress(0)
                 progress_text = st.empty()
 
+                current_nickname = st.session_state.get("user_nickname", "")
+
                 def _process_single_file(uploaded_file):
                     """在线程中处理单张照片：EXIF提取 + 编码 + AI识别 + 保存数据库"""
                     image_bytes = uploaded_file.getvalue()
@@ -1518,9 +1538,9 @@ with hero_right:
                     result["original_name"] = uploaded_file.name
 
                     # 生成缩略图并保存到数据库
-                    if supabase_client and user_nickname:
+                    if supabase_client and current_nickname:
                         thumb_b64 = generate_thumbnail_base64(image_bytes, uploaded_file.name)
-                        save_record_to_db(supabase_client, user_nickname, result, thumb_b64)
+                        save_record_to_db(supabase_client, current_nickname, result, thumb_b64)
 
                     return uploaded_file, {
                         "result": result,
