@@ -652,32 +652,95 @@ st.markdown("""
                 .catch(function(e) { console.warn('[PWA] SW failed', e); });
         }
 
-        // 在顶层注入 CSS 隐藏 Streamlit Cloud 的红色 Manage app 按钮
-        if (!topDoc.getElementById('hide-st-badge')) {
-            var style = topDoc.createElement('style');
-            style.id = 'hide-st-badge';
-            style.textContent = [
-                '._container_gzau3_1 { display: none !important; }',
-                '._profileContainer_gzau3_53 { display: none !important; }',
-                '._profilePreview_gzau3_63 { display: none !important; }',
-                '[data-testid="manage-app-button"] { display: none !important; }',
-                '[data-testid="stStatusWidget"] { display: none !important; }',
-                '[data-testid="stToolbar"] { display: none !important; }',
-                '[data-testid="stDecoration"] { display: none !important; }',
-                '.stDeployButton { display: none !important; }',
-                'button[kind="manage"] { display: none !important; }',
-                '.viewerBadge_container__r5tak { display: none !important; }',
-                '.styles_viewerBadge__CvC9N { display: none !important; }',
-                '#MainMenu { visibility: hidden !important; }',
-                'footer { visibility: hidden !important; }',
-                'header { visibility: hidden !important; }'
-            ].join('\n');
-            head.appendChild(style);
-        }
     } catch(e) { console.warn('[PWA] meta inject skipped', e); }
 })();
 </script>
 """, unsafe_allow_html=True)
+
+# ============================================================
+# 隐藏 Streamlit Cloud 外层框架的红色图标和头像
+# 使用 st.components.v1.html 注入零高度 iframe，突破 CSP 限制
+# ============================================================
+import streamlit.components.v1 as components
+components.html("""
+<script>
+(function() {
+    function hideStreamlitBranding() {
+        try {
+            var doc = window.top.document || window.parent.document;
+            if (!doc) return;
+
+            // 注入隐藏样式到顶层
+            if (!doc.getElementById('hide-st-branding')) {
+                var style = doc.createElement('style');
+                style.id = 'hide-st-branding';
+                style.textContent = `
+                    /* Streamlit Cloud manage app 按钮（红色波浪图标） */
+                    ._container_gzau3_1,
+                    ._profileContainer_gzau3_53,
+                    ._profilePreview_gzau3_63,
+                    [data-testid="manage-app-button"],
+                    [data-testid="stStatusWidget"],
+                    [data-testid="stToolbar"],
+                    [data-testid="stDecoration"],
+                    .stDeployButton,
+                    button[kind="manage"],
+                    .viewerBadge_container__r5tak,
+                    .styles_viewerBadge__CvC9N,
+                    #MainMenu, header {
+                        display: none !important;
+                        visibility: hidden !important;
+                        height: 0 !important;
+                        width: 0 !important;
+                        overflow: hidden !important;
+                        position: absolute !important;
+                        top: -9999px !important;
+                    }
+                    footer {
+                        visibility: hidden !important;
+                    }
+                    /* 通配：右下角固定定位的小按钮 */
+                    div[style*="position: fixed"][style*="bottom"][style*="right"] {
+                        display: none !important;
+                    }
+                `;
+                doc.head.appendChild(style);
+            }
+
+            // 直接查找并隐藏右下角的元素
+            var allFixed = doc.querySelectorAll('div, button, a, img');
+            allFixed.forEach(function(el) {
+                var cs = window.top.getComputedStyle(el);
+                if (cs.position === 'fixed' &&
+                    parseInt(cs.bottom) < 80 &&
+                    parseInt(cs.right) < 80 &&
+                    el.offsetWidth < 100 &&
+                    el.offsetHeight < 100) {
+                    el.style.display = 'none';
+                }
+            });
+        } catch(e) {}
+    }
+
+    // 立即执行 + 延迟执行 + 持续监控
+    hideStreamlitBranding();
+    setTimeout(hideStreamlitBranding, 1000);
+    setTimeout(hideStreamlitBranding, 3000);
+    setTimeout(hideStreamlitBranding, 5000);
+
+    // MutationObserver 持续监控新增元素
+    try {
+        var doc = window.top.document || window.parent.document;
+        var observer = new MutationObserver(function() {
+            hideStreamlitBranding();
+        });
+        observer.observe(doc.body, { childList: true, subtree: true });
+        // 30秒后停止监控，避免性能影响
+        setTimeout(function() { observer.disconnect(); }, 30000);
+    } catch(e) {}
+})();
+</script>
+""", height=0, scrolling=False)
 
 # ============================================================
 # PWA 安装引导横幅（使用 Streamlit 原生组件，确保可靠显示）
