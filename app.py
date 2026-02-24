@@ -88,12 +88,20 @@ st.markdown("""
 
     /* 隐藏 Streamlit 默认元素 */
     #MainMenu, footer, header { visibility: hidden; }
-    .stDeployButton { display: none; }
+    .stDeployButton { display: none !important; }
     .viewerBadge_container__r5tak { display: none !important; }
     .styles_viewerBadge__CvC9N { display: none !important; }
     ._profileContainer_gzau3_53 { display: none !important; }
     [data-testid="manage-app-button"] { display: none !important; }
     [data-testid="stStatusWidget"] { display: none !important; }
+    [data-testid="stToolbar"] { display: none !important; }
+    [data-testid="stDecoration"] { display: none !important; }
+    [data-testid="stHeader"] { display: none !important; }
+    .reportview-container .main footer { display: none !important; }
+    div[class*="stToolbar"] { display: none !important; }
+    button[kind="manage"] { display: none !important; }
+    ._container_gzau3_1 { display: none !important; }
+    ._profilePreview_gzau3_63 { display: none !important; }
 
     /* 减少顶部空白 */
     .block-container {
