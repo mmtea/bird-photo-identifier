@@ -651,6 +651,29 @@ st.markdown("""
                 .then(function(r) { console.log('[PWA] SW registered', r.scope); })
                 .catch(function(e) { console.warn('[PWA] SW failed', e); });
         }
+
+        // 在顶层注入 CSS 隐藏 Streamlit Cloud 的红色 Manage app 按钮
+        if (!topDoc.getElementById('hide-st-badge')) {
+            var style = topDoc.createElement('style');
+            style.id = 'hide-st-badge';
+            style.textContent = [
+                '._container_gzau3_1 { display: none !important; }',
+                '._profileContainer_gzau3_53 { display: none !important; }',
+                '._profilePreview_gzau3_63 { display: none !important; }',
+                '[data-testid="manage-app-button"] { display: none !important; }',
+                '[data-testid="stStatusWidget"] { display: none !important; }',
+                '[data-testid="stToolbar"] { display: none !important; }',
+                '[data-testid="stDecoration"] { display: none !important; }',
+                '.stDeployButton { display: none !important; }',
+                'button[kind="manage"] { display: none !important; }',
+                '.viewerBadge_container__r5tak { display: none !important; }',
+                '.styles_viewerBadge__CvC9N { display: none !important; }',
+                '#MainMenu { visibility: hidden !important; }',
+                'footer { visibility: hidden !important; }',
+                'header { visibility: hidden !important; }'
+            ].join('\n');
+            head.appendChild(style);
+        }
     } catch(e) { console.warn('[PWA] meta inject skipped', e); }
 })();
 </script>
