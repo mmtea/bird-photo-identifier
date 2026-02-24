@@ -1901,13 +1901,22 @@ with hero_right:
                                 if card_index < len(results_with_bytes):
                                     results_with_bytes[card_index]["result"]["chinese_name"] = selected_name
                                     results_with_bytes[card_index]["result"]["english_name"] = selected_english
+                                # 同步写回 session_state，确保 rerun 后数据一致
+                                st.session_state["results_with_bytes"] = results_with_bytes
+                                # 同步更新 identified_cache
+                                if "identified_cache" in st.session_state:
+                                    for fkey, cached in st.session_state["identified_cache"].items():
+                                        if cached["result"].get("original_name") == result.get("original_name"):
+                                            cached["result"]["chinese_name"] = selected_name
+                                            cached["result"]["english_name"] = selected_english
+                                            break
                                 if result.get("_db_saved"):
                                     db_record_id = result.get("_db_record_id")
                                     if db_record_id:
                                         update_record_name_in_db(db_record_id, selected_name, selected_english)
-                                        fetch_user_history.clear()
-                                        fetch_leaderboard.clear()
-                                        fetch_top_photos.clear()
+                                fetch_user_history.clear()
+                                fetch_leaderboard.clear()
+                                fetch_top_photos.clear()
                                 st.toast(f"✅ 已选择「{selected_name}」", icon="✏️")
                                 st.rerun()
                         else:
@@ -1924,13 +1933,20 @@ with hero_right:
                                 result["chinese_name"] = new_name
                                 if card_index < len(results_with_bytes):
                                     results_with_bytes[card_index]["result"]["chinese_name"] = new_name
+                                # 同步写回 session_state
+                                st.session_state["results_with_bytes"] = results_with_bytes
+                                if "identified_cache" in st.session_state:
+                                    for fkey, cached in st.session_state["identified_cache"].items():
+                                        if cached["result"].get("original_name") == result.get("original_name"):
+                                            cached["result"]["chinese_name"] = new_name
+                                            break
                                 if result.get("_db_saved"):
                                     db_record_id = result.get("_db_record_id")
                                     if db_record_id:
                                         update_record_name_in_db(db_record_id, new_name)
-                                        fetch_user_history.clear()
-                                        fetch_leaderboard.clear()
-                                        fetch_top_photos.clear()
+                                fetch_user_history.clear()
+                                fetch_leaderboard.clear()
+                                fetch_top_photos.clear()
                                 st.toast(f"✅ 已修改为「{new_name}」", icon="✏️")
                                 st.rerun()
                             selected_english = result.get("english_name", "")
