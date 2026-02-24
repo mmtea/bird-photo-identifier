@@ -89,6 +89,11 @@ st.markdown("""
     /* 隐藏 Streamlit 默认元素 */
     #MainMenu, footer, header { visibility: hidden; }
     .stDeployButton { display: none; }
+    .viewerBadge_container__r5tak { display: none !important; }
+    .styles_viewerBadge__CvC9N { display: none !important; }
+    ._profileContainer_gzau3_53 { display: none !important; }
+    [data-testid="manage-app-button"] { display: none !important; }
+    [data-testid="stStatusWidget"] { display: none !important; }
 
     /* 减少顶部空白 */
     .block-container {
