@@ -1221,8 +1221,8 @@ def delete_record_from_db(record_id: int) -> bool:
         return False
 
 
-def update_record_name_in_db(record_id: int, new_chinese_name: str) -> bool:
-    """更新数据库中某条记录的鸟种中文名"""
+def update_record_name_in_db(record_id: int, new_chinese_name: str, new_english_name: str = "") -> bool:
+    """更新数据库中某条记录的鸟种名称（中文名 + 英文名）"""
     base_url, api_key = _supabase_config()
     if not base_url or not api_key:
         return False
@@ -1238,7 +1238,10 @@ def update_record_name_in_db(record_id: int, new_chinese_name: str) -> bool:
             "Content-Type": "application/json",
             "Prefer": "return=minimal",
         }
-        body = json.dumps({"chinese_name": new_chinese_name}).encode("utf-8")
+        update_data = {"chinese_name": new_chinese_name}
+        if new_english_name:
+            update_data["english_name"] = new_english_name
+        body = json.dumps(update_data).encode("utf-8")
         conn.request("PATCH", path, body=body, headers=headers)
         resp = conn.getresponse()
         status = resp.status
@@ -1901,11 +1904,12 @@ with hero_right:
                                 if result.get("_db_saved"):
                                     db_record_id = result.get("_db_record_id")
                                     if db_record_id:
-                                        update_record_name_in_db(db_record_id, selected_name)
+                                        update_record_name_in_db(db_record_id, selected_name, selected_english)
                                         fetch_user_history.clear()
                                         fetch_leaderboard.clear()
                                         fetch_top_photos.clear()
                                 st.toast(f"✅ 已选择「{selected_name}」", icon="✏️")
+                                st.rerun()
                         else:
                             # 没有候选列表时，保留文本输入框作为兜底
                             edit_key = f"edit_name_{card_index}"
@@ -1928,6 +1932,7 @@ with hero_right:
                                         fetch_leaderboard.clear()
                                         fetch_top_photos.clear()
                                 st.toast(f"✅ 已修改为「{new_name}」", icon="✏️")
+                                st.rerun()
                             selected_english = result.get("english_name", "")
 
                         st.markdown(
