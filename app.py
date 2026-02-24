@@ -1895,30 +1895,33 @@ with hero_right:
                                     selected_english = candidate.get("english_name", selected_english)
                                     break
 
+                            # 选择了不同鸟种时，显示确认按钮
                             if selected_name != current_name:
-                                result["chinese_name"] = selected_name
-                                result["english_name"] = selected_english
-                                if card_index < len(results_with_bytes):
-                                    results_with_bytes[card_index]["result"]["chinese_name"] = selected_name
-                                    results_with_bytes[card_index]["result"]["english_name"] = selected_english
-                                # 同步写回 session_state，确保 rerun 后数据一致
-                                st.session_state["results_with_bytes"] = results_with_bytes
-                                # 同步更新 identified_cache
-                                if "identified_cache" in st.session_state:
-                                    for fkey, cached in st.session_state["identified_cache"].items():
-                                        if cached["result"].get("original_name") == result.get("original_name"):
-                                            cached["result"]["chinese_name"] = selected_name
-                                            cached["result"]["english_name"] = selected_english
-                                            break
-                                if result.get("_db_saved"):
-                                    db_record_id = result.get("_db_record_id")
-                                    if db_record_id:
-                                        update_record_name_in_db(db_record_id, selected_name, selected_english)
-                                fetch_user_history.clear()
-                                fetch_leaderboard.clear()
-                                fetch_top_photos.clear()
-                                st.toast(f"✅ 已选择「{selected_name}」", icon="✏️")
-                                st.rerun()
+                                confirm_key = f"confirm_species_{card_index}"
+                                if st.button(f"✅ 确认修改为「{selected_name}」", key=confirm_key, use_container_width=True):
+                                    result["chinese_name"] = selected_name
+                                    result["english_name"] = selected_english
+                                    if card_index < len(results_with_bytes):
+                                        results_with_bytes[card_index]["result"]["chinese_name"] = selected_name
+                                        results_with_bytes[card_index]["result"]["english_name"] = selected_english
+                                    # 同步写回 session_state，确保 rerun 后数据一致
+                                    st.session_state["results_with_bytes"] = results_with_bytes
+                                    # 同步更新 identified_cache
+                                    if "identified_cache" in st.session_state:
+                                        for fkey, cached in st.session_state["identified_cache"].items():
+                                            if cached["result"].get("original_name") == result.get("original_name"):
+                                                cached["result"]["chinese_name"] = selected_name
+                                                cached["result"]["english_name"] = selected_english
+                                                break
+                                    if result.get("_db_saved"):
+                                        db_record_id = result.get("_db_record_id")
+                                        if db_record_id:
+                                            update_record_name_in_db(db_record_id, selected_name, selected_english)
+                                    fetch_user_history.clear()
+                                    fetch_leaderboard.clear()
+                                    fetch_top_photos.clear()
+                                    st.toast(f"✅ 已修改为「{selected_name}」", icon="✏️")
+                                    st.rerun()
                         else:
                             # 没有候选列表时，保留文本输入框作为兜底
                             edit_key = f"edit_name_{card_index}"
