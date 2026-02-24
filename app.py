@@ -1221,17 +1221,34 @@ def delete_record_from_db(record_id: int) -> bool:
         return False
 
 
-def update_record_name_in_db(record_id: int, new_chinese_name: str, new_english_name: str = "") -> bool:
-    """更新数据库中某条记录的鸟种名称（中文名 + 英文名）"""
+def update_record_name_in_db(record_id: int, new_chinese_name: str, new_english_name: str = "",
+                             user_nickname: str = "", old_chinese_name: str = "",
+                             shoot_date: str = "") -> bool:
+    """更新数据库中某条记录的鸟种名称（中文名 + 英文名）。
+
+    优先通过 record_id 定位记录；如果 record_id 为 None，
+    则通过 user_nickname + old_chinese_name + shoot_date 组合定位。
+    """
     base_url, api_key = _supabase_config()
     if not base_url or not api_key:
         return False
     try:
         import http.client
-        from urllib.parse import urlparse
+        from urllib.parse import urlparse, quote
         parsed = urlparse(base_url)
         conn = http.client.HTTPSConnection(parsed.hostname, timeout=15)
-        path = f"/rest/v1/bird_records?id=eq.{record_id}"
+
+        # 构建查询条件：优先用 id，否则用组合条件定位
+        if record_id:
+            path = f"/rest/v1/bird_records?id=eq.{record_id}"
+        elif user_nickname and old_chinese_name:
+            path = f"/rest/v1/bird_records?user_nickname=eq.{quote(user_nickname)}&chinese_name=eq.{quote(old_chinese_name)}"
+            if shoot_date:
+                path += f"&shoot_date=eq.{quote(shoot_date)}"
+        else:
+            print("[Supabase] 更新失败: 无法定位记录（无 id 且无组合条件）")
+            return False
+
         headers = {
             "apikey": api_key,
             "Authorization": f"Bearer {api_key}",
@@ -1247,6 +1264,7 @@ def update_record_name_in_db(record_id: int, new_chinese_name: str, new_english_
         status = resp.status
         resp.read()
         conn.close()
+        print(f"[Supabase] 更新鸟名: {old_chinese_name} -> {new_chinese_name} (HTTP {status}, path={path})")
         return status in (200, 204)
     except Exception:
         return False
@@ -1899,6 +1917,7 @@ with hero_right:
                             if selected_name != current_name:
                                 confirm_key = f"confirm_species_{card_index}"
                                 if st.button(f"✅ 确认修改为「{selected_name}」", key=confirm_key, use_container_width=True):
+                                    old_name = current_name
                                     result["chinese_name"] = selected_name
                                     result["english_name"] = selected_english
                                     if card_index < len(results_with_bytes):
@@ -1913,10 +1932,17 @@ with hero_right:
                                                 cached["result"]["chinese_name"] = selected_name
                                                 cached["result"]["english_name"] = selected_english
                                                 break
+                                    # 更新数据库：优先用 record_id，否则用组合条件定位
                                     if result.get("_db_saved"):
                                         db_record_id = result.get("_db_record_id")
-                                        if db_record_id:
-                                            update_record_name_in_db(db_record_id, selected_name, selected_english)
+                                        current_user = st.session_state.get("user_nickname", "")
+                                        record_shoot_date = result.get("shoot_date", "")
+                                        update_record_name_in_db(
+                                            db_record_id, selected_name, selected_english,
+                                            user_nickname=current_user,
+                                            old_chinese_name=old_name,
+                                            shoot_date=record_shoot_date,
+                                        )
                                     fetch_user_history.clear()
                                     fetch_leaderboard.clear()
                                     fetch_top_photos.clear()
@@ -1933,6 +1959,7 @@ with hero_right:
                                 placeholder="输入鸟种中文名",
                             )
                             if new_name and new_name != current_name:
+                                old_name = current_name
                                 result["chinese_name"] = new_name
                                 if card_index < len(results_with_bytes):
                                     results_with_bytes[card_index]["result"]["chinese_name"] = new_name
@@ -1945,8 +1972,14 @@ with hero_right:
                                             break
                                 if result.get("_db_saved"):
                                     db_record_id = result.get("_db_record_id")
-                                    if db_record_id:
-                                        update_record_name_in_db(db_record_id, new_name)
+                                    current_user = st.session_state.get("user_nickname", "")
+                                    record_shoot_date = result.get("shoot_date", "")
+                                    update_record_name_in_db(
+                                        db_record_id, new_name,
+                                        user_nickname=current_user,
+                                        old_chinese_name=old_name,
+                                        shoot_date=record_shoot_date,
+                                    )
                                 fetch_user_history.clear()
                                 fetch_leaderboard.clear()
                                 fetch_top_photos.clear()
