@@ -742,39 +742,6 @@ components.html("""
 </script>
 """, height=0, scrolling=False)
 
-# ============================================================
-# PWA 安装引导横幅（使用 Streamlit 原生组件，确保可靠显示）
-# ============================================================
-# 通过 query_params 或 session_state 控制是否显示
-if "pwa_banner_dismissed" not in st.session_state:
-    st.session_state.pwa_banner_dismissed = False
-
-if not st.session_state.pwa_banner_dismissed:
-    st.markdown("""
-    <div style="
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: #fff;
-        padding: 14px 20px;
-        border-radius: 14px;
-        margin-bottom: 12px;
-        text-align: center;
-        font-size: 14px;
-        font-weight: 600;
-        box-shadow: 0 4px 20px rgba(102,126,234,0.3);
-    ">
-        <div>📲 将「影禽」添加到手机主屏幕，获得 App 般体验</div>
-        <div style="font-size:12px; font-weight:400; color:rgba(255,255,255,0.85); margin-top:8px; line-height:1.6;">
-            <strong>iPhone / iPad</strong>：点击 Safari 底部「分享」按钮 ⬆️ → 选择「添加到主屏幕」<br>
-            <strong>Android</strong>：点击浏览器右上角菜单 ⋮ → 选择「添加到主屏幕」
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-    if st.button("✕ 知道了，不再提示", key="pwa_dismiss_btn", type="secondary"):
-        st.session_state.pwa_banner_dismissed = True
-        st.rerun()
-
-
-# ============================================================
 # 工具函数
 # ============================================================
 def image_bytes_to_pil(image_bytes: bytes, filename: str = "") -> "Image.Image | None":
