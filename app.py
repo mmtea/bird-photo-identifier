@@ -532,8 +532,147 @@ st.markdown("""
         margin-top: -4px;
         margin-bottom: 10px;
     }
+
+    /* PWA 安装提示横幅 */
+    .pwa-install-banner {
+        display: none;
+        position: fixed;
+        bottom: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 9999;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: #fff;
+        padding: 14px 24px;
+        border-radius: 16px;
+        box-shadow: 0 8px 32px rgba(102,126,234,0.4);
+        font-size: 14px;
+        font-weight: 600;
+        text-align: center;
+        max-width: 360px;
+        width: calc(100% - 40px);
+        animation: slide-up 0.4s ease-out;
+    }
+    @keyframes slide-up {
+        from { transform: translateX(-50%) translateY(100px); opacity: 0; }
+        to   { transform: translateX(-50%) translateY(0); opacity: 1; }
+    }
+    .pwa-install-banner .pwa-btn-row {
+        display: flex;
+        gap: 10px;
+        margin-top: 10px;
+        justify-content: center;
+    }
+    .pwa-install-banner button {
+        border: none;
+        border-radius: 10px;
+        padding: 8px 20px;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    .pwa-install-btn {
+        background: #fff;
+        color: #667eea;
+    }
+    .pwa-install-btn:hover {
+        background: #f0f0f5;
+    }
+    .pwa-dismiss-btn {
+        background: rgba(255,255,255,0.2);
+        color: #fff;
+    }
+    .pwa-dismiss-btn:hover {
+        background: rgba(255,255,255,0.3);
+    }
+    /* iOS Safari 安装引导 */
+    .pwa-ios-guide {
+        font-size: 12px;
+        color: rgba(255,255,255,0.85);
+        margin-top: 8px;
+        line-height: 1.5;
+    }
 </style>
 """, unsafe_allow_html=True)
+
+# ============================================================
+# PWA 支持：注入 manifest、meta 标签 & Service Worker 注册
+# ============================================================
+st.markdown("""
+<link rel="manifest" href="./static/manifest.json" crossorigin="use-credentials">
+<meta name="theme-color" content="#667eea">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="影禽">
+<link rel="apple-touch-icon" href="./static/icon-192.png">
+
+<!-- 将 meta/link 标签提升到顶层 head（Streamlit iframe 内注入的标签浏览器可能忽略） -->
+<script>
+(function() {
+    try {
+        var topDoc = window.parent.document || document;
+        var head = topDoc.head || topDoc.getElementsByTagName('head')[0];
+        if (!head) return;
+
+        // 避免重复注入
+        if (topDoc.querySelector('link[rel="manifest"]')) return;
+
+        var tags = [
+            {tag:'link', attrs:{rel:'manifest', href:'./static/manifest.json', crossOrigin:'use-credentials'}},
+            {tag:'meta', attrs:{name:'theme-color', content:'#667eea'}},
+            {tag:'meta', attrs:{name:'apple-mobile-web-app-capable', content:'yes'}},
+            {tag:'meta', attrs:{name:'apple-mobile-web-app-status-bar-style', content:'black-translucent'}},
+            {tag:'meta', attrs:{name:'apple-mobile-web-app-title', content:'影禽'}},
+            {tag:'link', attrs:{rel:'apple-touch-icon', href:'./static/icon-192.png'}}
+        ];
+        tags.forEach(function(t) {
+            var el = topDoc.createElement(t.tag);
+            for (var k in t.attrs) { el.setAttribute(k, t.attrs[k]); }
+            head.appendChild(el);
+        });
+
+        // 注册 Service Worker（在顶层窗口注册）
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('./static/sw.js')
+                .then(function(r) { console.log('[PWA] SW registered', r.scope); })
+                .catch(function(e) { console.warn('[PWA] SW failed', e); });
+        }
+    } catch(e) { console.warn('[PWA] meta inject skipped', e); }
+})();
+</script>
+""", unsafe_allow_html=True)
+
+# ============================================================
+# PWA 安装引导横幅（使用 Streamlit 原生组件，确保可靠显示）
+# ============================================================
+# 通过 query_params 或 session_state 控制是否显示
+if "pwa_banner_dismissed" not in st.session_state:
+    st.session_state.pwa_banner_dismissed = False
+
+if not st.session_state.pwa_banner_dismissed:
+    st.markdown("""
+    <div style="
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: #fff;
+        padding: 14px 20px;
+        border-radius: 14px;
+        margin-bottom: 12px;
+        text-align: center;
+        font-size: 14px;
+        font-weight: 600;
+        box-shadow: 0 4px 20px rgba(102,126,234,0.3);
+    ">
+        <div>📲 将「影禽」添加到手机主屏幕，获得 App 般体验</div>
+        <div style="font-size:12px; font-weight:400; color:rgba(255,255,255,0.85); margin-top:8px; line-height:1.6;">
+            <strong>iPhone / iPad</strong>：点击 Safari 底部「分享」按钮 ⬆️ → 选择「添加到主屏幕」<br>
+            <strong>Android</strong>：点击浏览器右上角菜单 ⋮ → 选择「添加到主屏幕」
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    if st.button("✕ 知道了，不再提示", key="pwa_dismiss_btn", type="secondary"):
+        st.session_state.pwa_banner_dismissed = True
+        st.rerun()
 
 
 # ============================================================
