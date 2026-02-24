@@ -45,3 +45,7 @@ CREATE POLICY "允许所有人查询记录" ON bird_records
 DROP POLICY IF EXISTS "允许所有人删除记录" ON bird_records;
 CREATE POLICY "允许所有人删除记录" ON bird_records
     FOR DELETE USING (true);
+
+DROP POLICY IF EXISTS "允许所有人更新记录" ON bird_records;
+CREATE POLICY "允许所有人更新记录" ON bird_records
+    FOR UPDATE USING (true) WITH CHECK (true);
