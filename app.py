@@ -1158,6 +1158,59 @@ def identify_bird(image_base64: str, api_key: str, exif_info: dict) -> dict:
     return parsed
 
 
+def draw_bird_bbox(img: "Image.Image", bbox: list, color=(102, 126, 234), thickness: int = 3, opacity: float = 0.15) -> "Image.Image":
+    """在原图上绘制半透明高亮框标注 AI 识别的鸟的位置。
+
+    bbox 格式: [x1, y1, x2, y2]，值为 0-100 的百分比。
+    返回带有高亮框的新图片。
+    """
+    if not bbox or len(bbox) != 4:
+        return img
+
+    from PIL import ImageDraw
+
+    annotated = img.copy().convert("RGBA")
+    width, height = annotated.size
+    x1_pct, y1_pct, x2_pct, y2_pct = bbox
+
+    x1 = int(width * x1_pct / 100)
+    y1 = int(height * y1_pct / 100)
+    x2 = int(width * x2_pct / 100)
+    y2 = int(height * y2_pct / 100)
+
+    if x2 <= x1 or y2 <= y1:
+        return img
+
+    # 绘制半透明填充层
+    overlay = Image.new("RGBA", annotated.size, (0, 0, 0, 0))
+    overlay_draw = ImageDraw.Draw(overlay)
+    fill_color = (*color, int(255 * opacity))
+    overlay_draw.rectangle([x1, y1, x2, y2], fill=fill_color)
+    annotated = Image.alpha_composite(annotated, overlay)
+
+    # 绘制边框
+    draw = ImageDraw.Draw(annotated)
+    for offset in range(thickness):
+        draw.rectangle(
+            [x1 - offset, y1 - offset, x2 + offset, y2 + offset],
+            outline=(*color, 220),
+        )
+
+    # 在左上角绘制 "AI 识别区域" 小标签
+    label = "AI"
+    label_padding = 4
+    label_x = x1
+    label_y = max(0, y1 - 20)
+    label_bg = (*color, 200)
+    draw.rectangle(
+        [label_x, label_y, label_x + 24, label_y + 16],
+        fill=label_bg,
+    )
+    draw.text((label_x + label_padding, label_y + 1), label, fill=(255, 255, 255, 255))
+
+    return annotated.convert("RGB")
+
+
 def crop_to_bird(img: "Image.Image", bbox: list, padding_ratio: float = 0.15) -> "Image.Image":
     """根据 AI 返回的百分比 bounding box 裁剪图片，聚焦到鸟的区域。
 
@@ -1320,6 +1373,7 @@ def save_record_to_db(supabase_client, user_nickname: str, result: dict,
         "user_nickname": user_nickname,
         "chinese_name": result.get("chinese_name", "未知鸟类"),
         "english_name": result.get("english_name", ""),
+        "original_ai_name": result.get("chinese_name", "未知鸟类"),
         "order_chinese": result.get("order_chinese", ""),
         "family_chinese": result.get("family_chinese", ""),
         "confidence": result.get("confidence", "low"),
@@ -1453,7 +1507,7 @@ def update_record_name_in_db(record_id: int, new_chinese_name: str, new_english_
         print("[Supabase] 更新失败: 无法定位记录（无 id 且无组合条件）")
         return False
 
-    update_data = {"chinese_name": new_chinese_name}
+    update_data = {"chinese_name": new_chinese_name, "user_corrected_name": new_chinese_name}
     if new_english_name:
         update_data["english_name"] = new_english_name
 
@@ -2077,7 +2131,10 @@ with hero_right:
                             bird_bbox = result.get("bird_bbox")
                             if bird_bbox and len(bird_bbox) == 4:
                                 try:
-                                    cropped_img = crop_to_bird(preview_img.copy(), bird_bbox)
+                                    # 在原图上绘制 AI 识别区域高亮框
+                                    annotated_img = draw_bird_bbox(preview_img.copy(), bird_bbox)
+                                    # 裁剪聚焦到鸟的区域用于展示
+                                    cropped_img = crop_to_bird(annotated_img.copy(), bird_bbox)
                                     st.image(cropped_img, use_container_width=True)
                                 except Exception:
                                     st.image(preview_img, use_container_width=True)
@@ -2086,10 +2143,22 @@ with hero_right:
                         else:
                             st.text("无法预览")
 
+                        # 低置信度提示
+                        candidates = result.get("candidates", [])
+                        if candidates:
+                            max_similarity = max(c.get("similarity", 0) for c in candidates)
+                            if max_similarity < 50:
+                                st.markdown(
+                                    '<div style="background:rgba(255,149,0,0.12); color:#cc7700; '
+                                    'padding:6px 10px; border-radius:8px; font-size:12px; '
+                                    'margin-bottom:6px; text-align:center;">'
+                                    '⚠️ AI 不太确定，建议人工确认或提供更清晰的照片</div>',
+                                    unsafe_allow_html=True,
+                                )
+
                         # 候选鸟种选择（带相似度百分比）
                         card_index = row_start + col_idx
                         select_key = f"select_species_{card_index}"
-                        candidates = result.get("candidates", [])
                         current_name = result.get("chinese_name", "未知")
 
                         if candidates and len(candidates) > 0:
