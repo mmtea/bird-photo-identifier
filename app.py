@@ -1211,6 +1211,72 @@ def draw_bird_bbox(img: "Image.Image", bbox: list, color=(102, 126, 234), thickn
     return annotated.convert("RGB")
 
 
+@st.cache_data(ttl=86400, show_spinner=False)
+def get_seasonal_bird_recommendations(api_key: str, city: str, month: int) -> list:
+    """根据城市和月份，用 AI 生成本月可能观测到的鸟种推荐。
+
+    返回格式: [{"name": "白头鹎", "emoji": "🐦", "tip": "常见于公园灌丛"}]
+    结果缓存 24 小时。
+    """
+    season_map = {
+        1: "冬季（越冬期）", 2: "冬季（越冬期）", 3: "春季（春迁期）",
+        4: "春季（春迁期）", 5: "春季（春迁期）", 6: "夏季（繁殖期）",
+        7: "夏季（繁殖期）", 8: "夏季（繁殖期）", 9: "秋季（秋迁期）",
+        10: "秋季（秋迁期）", 11: "秋季（秋迁期）", 12: "冬季（越冬期）",
+    }
+    season = season_map.get(month, "")
+    month_names = ["", "一月", "二月", "三月", "四月", "五月", "六月",
+                   "七月", "八月", "九月", "十月", "十一月", "十二月"]
+    month_name = month_names[month] if 1 <= month <= 12 else ""
+
+    try:
+        client = OpenAI(
+            api_key=api_key,
+            base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+        )
+        response = client.chat.completions.create(
+            model="qwen-plus",
+            temperature=0.7,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "你是一位中国鸟类学专家，精通中国各地各季节的鸟类分布。"
+                        "请根据用户提供的城市和月份，推荐该地区该时节最值得观测的鸟种。"
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        f"我在{city}，现在是{month_name}（{season}）。\n\n"
+                        "请推荐 6 种本月在该地区最可能观测到的鸟种，优先推荐：\n"
+                        "1. 当季特色鸟种（如迁徙过境的旅鸟、刚到达的候鸟）\n"
+                        "2. 容易观测到的常见种\n"
+                        "3. 有观赏价值的鸟种\n\n"
+                        "只返回 JSON 数组，格式如下：\n"
+                        "[\n"
+                        '  {"name": "鸟种中文名", "emoji": "合适的emoji", "tip": "一句话观测提示（在哪里容易看到、有什么特征，15字以内）"},\n'
+                        "  ...\n"
+                        "]\n\n"
+                        "要求：\n"
+                        "- 必须是该城市该月份确实有分布记录的鸟种\n"
+                        "- emoji 要与鸟的特征相关（如水鸟用🦆，猛禽用🦅，小型鸟用🐦等）\n"
+                        "- 不要返回 JSON 以外的内容"
+                    ),
+                },
+            ],
+        )
+        result_text = response.choices[0].message.content.strip()
+        json_match = re.search(r'\[.*\]', result_text, re.DOTALL)
+        if json_match:
+            parsed = json.loads(json_match.group())
+            if isinstance(parsed, list) and len(parsed) > 0:
+                return parsed[:6]
+    except Exception as exc:
+        print(f"[季节推荐] 生成失败: {exc}")
+    return []
+
+
 def crop_to_bird(img: "Image.Image", bbox: list, padding_ratio: float = 0.15) -> "Image.Image":
     """根据 AI 返回的百分比 bounding box 裁剪图片，聚焦到鸟的区域。
 
@@ -1863,6 +1929,58 @@ with hero_right:
                 st.session_state.pop("results_with_bytes", None)
                 st.session_state.pop("zip_bytes", None)
                 st.rerun()
+        # ============================================================
+        # 季节性鸟种推荐（根据当前月份和用户城市）
+        # ============================================================
+        import datetime
+        current_month = datetime.datetime.now().month
+        month_names = ["", "一月", "二月", "三月", "四月", "五月", "六月",
+                       "七月", "八月", "九月", "十月", "十一月", "十二月"]
+        season_emoji = {1: "❄️", 2: "❄️", 3: "🌸", 4: "🌸", 5: "🌸",
+                        6: "☀️", 7: "☀️", 8: "☀️", 9: "🍂", 10: "🍂",
+                        11: "🍂", 12: "❄️"}
+
+        # 城市选择（保存在 session_state 中）
+        if "user_city" not in st.session_state:
+            st.session_state["user_city"] = "杭州"
+
+        with st.expander(f"{season_emoji.get(current_month, '🐦')} {month_names[current_month]}观鸟推荐", expanded=False):
+            user_city = st.text_input(
+                "你的城市",
+                value=st.session_state["user_city"],
+                key="city_input",
+                placeholder="输入城市名，如：杭州、北京、成都",
+                label_visibility="collapsed",
+            )
+            if user_city and user_city != st.session_state["user_city"]:
+                st.session_state["user_city"] = user_city
+                get_seasonal_bird_recommendations.clear()
+                st.rerun()
+
+            recommendations = get_seasonal_bird_recommendations(api_key, st.session_state["user_city"], current_month)
+            if recommendations:
+                bird_items_html = ""
+                for bird in recommendations:
+                    emoji = bird.get("emoji", "🐦")
+                    name = bird.get("name", "")
+                    tip = bird.get("tip", "")
+                    bird_items_html += (
+                        f'<div style="display:flex; align-items:center; gap:8px; '
+                        f'padding:6px 10px; background:rgba(102,126,234,0.06); '
+                        f'border-radius:10px; margin-bottom:4px;">'
+                        f'<span style="font-size:18px;">{emoji}</span>'
+                        f'<div>'
+                        f'<span style="font-size:13px; font-weight:600; color:#1d1d1f;">{name}</span>'
+                        f'<span style="font-size:11px; color:#86868b; margin-left:6px;">{tip}</span>'
+                        f'</div></div>'
+                    )
+                st.markdown(
+                    f'<div style="margin-top:4px;">{bird_items_html}</div>',
+                    unsafe_allow_html=True,
+                )
+            else:
+                st.caption("正在加载推荐…")
+
         # 上传区域（紧跟在登录下方）
         st.markdown(
             f'<p class="section-subtitle" style="margin-top:8px;">'
