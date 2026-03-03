@@ -2086,16 +2086,40 @@ def update_record_name_in_db(record_id: int, new_chinese_name: str, new_english_
         return False
 
 def fetch_user_stats_from_records(records: list) -> dict:
-    """从已有的历史记录中计算统计数据（避免额外的数据库请求）"""
+    """从已有的历史记录中计算统计数据（避免额外的数据库请求）。
+
+    区分拍照识别记录和导入记录：
+    - 鸟种数：包含全部（拍照 + 导入）
+    - 累计识别 / 平均分 / 最高分：仅统计拍照识别记录
+    - 导入鸟种数：单独统计
+    """
     if not records:
-        return {"total": 0, "species": 0, "avg_score": 0, "best_score": 0}
-    species_set = set(r["chinese_name"] for r in records if r.get("chinese_name"))
-    scores = [r["score"] for r in records if r.get("score")]
+        return {"total": 0, "species": 0, "avg_score": 0, "best_score": 0,
+                "imported_species": 0, "photo_total": 0}
+
+    all_species = set()
+    imported_species = set()
+    photo_records = []
+
+    for record in records:
+        chinese_name = record.get("chinese_name", "")
+        if chinese_name:
+            all_species.add(chinese_name)
+        if record.get("confidence") == "imported":
+            if chinese_name:
+                imported_species.add(chinese_name)
+        else:
+            photo_records.append(record)
+
+    scores = [r["score"] for r in photo_records if r.get("score")]
     avg_score = sum(scores) / len(scores) if scores else 0
     best_score = max(scores) if scores else 0
+
     return {
         "total": len(records),
-        "species": len(species_set),
+        "photo_total": len(photo_records),
+        "species": len(all_species),
+        "imported_species": len(imported_species),
         "avg_score": round(avg_score, 1),
         "best_score": best_score,
     }
@@ -2121,14 +2145,16 @@ def fetch_top_photos(limit: int = 10) -> list:
 def fetch_leaderboard(limit: int = 20) -> list:
     """查询所有用户的排行榜数据，按鸟种数降序排列（缓存 60 秒）"""
     try:
-        params = "select=user_nickname,chinese_name,score&limit=2000"
+        params = "select=user_nickname,chinese_name,score,confidence&limit=2000"
         result = _supabase_request("GET", "bird_records", params=params)
         records = result if isinstance(result, list) else []
         if not records:
             return []
-        # 按用户聚合统计
+        # 按用户聚合统计（排除导入记录，只统计拍照识别）
         user_data = {}
         for record in records:
+            if record.get("confidence") == "imported":
+                continue
             nickname = record.get("user_nickname", "")
             if not nickname:
                 continue
@@ -3254,13 +3280,27 @@ if supabase_client and user_nickname:
         history_records = fetch_user_history(supabase_client, user_nickname)
         user_stats = fetch_user_stats_from_records(history_records)
         if user_stats and user_stats.get("total", 0) > 0:
-            hist_stat_cols = st.columns(4, gap="medium")
-            hist_stat_data = [
-                (str(user_stats["total"]), "累计识别"),
-                (str(user_stats["species"]), "鸟种数"),
-                (str(user_stats["avg_score"]), "平均分"),
-                (str(user_stats["best_score"]), "最高分"),
-            ]
+            imported_count = user_stats.get("imported_species", 0)
+            photo_total = user_stats.get("photo_total", 0)
+
+            # 统计卡片：根据是否有导入记录动态调整
+            if imported_count > 0:
+                hist_stat_cols = st.columns(5, gap="small")
+                hist_stat_data = [
+                    (str(photo_total), "📷 拍摄识别"),
+                    (str(imported_count), "📥 导入鸟种"),
+                    (str(user_stats["species"]), "🐦 总鸟种"),
+                    (str(user_stats["avg_score"]), "⭐ 平均分"),
+                    (str(user_stats["best_score"]), "🏆 最高分"),
+                ]
+            else:
+                hist_stat_cols = st.columns(4, gap="medium")
+                hist_stat_data = [
+                    (str(user_stats["total"]), "累计识别"),
+                    (str(user_stats["species"]), "鸟种数"),
+                    (str(user_stats["avg_score"]), "平均分"),
+                    (str(user_stats["best_score"]), "最高分"),
+                ]
             for col, (value, label) in zip(hist_stat_cols, hist_stat_data):
                 with col:
                     st.markdown(
@@ -3274,63 +3314,126 @@ if supabase_client and user_nickname:
             st.markdown("<br>", unsafe_allow_html=True)
 
         # 历史记录列表（已在上方查询过）
+        # 分离拍照记录和导入记录
+        photo_records = [r for r in history_records if r.get("confidence") != "imported"]
+        imported_records = [r for r in history_records if r.get("confidence") == "imported"]
+
         if history_records:
-            with st.expander(f"查看全部历史记录（{len(history_records)} 条）", expanded=True):
-                for row_start in range(0, len(history_records), 4):
-                    row_items = history_records[row_start:row_start + 4]
-                    hist_cols = st.columns(4)
-                    for col_idx, record in enumerate(row_items):
-                        with hist_cols[col_idx]:
-                            # 缩略图（直接用 HTML img 渲染 base64，避免 st.image 开销）
-                            thumb_b64 = record.get("thumbnail_base64", "")
-                            if thumb_b64:
-                                st.markdown(
-                                    f'<img src="data:image/jpeg;base64,{thumb_b64}" '
-                                    f'style="width:100%; border-radius:10px; object-fit:contain;" '
-                                    f'loading="lazy" alt="bird">',
-                                    unsafe_allow_html=True,
-                                )
-                            else:
-                                st.markdown(
-                                    '<div style="height:80px; background:rgba(0,0,0,0.04); '
-                                    'border-radius:10px; display:flex; align-items:center; '
-                                    'justify-content:center; color:#86868b; font-size:20px;">🐦</div>',
-                                    unsafe_allow_html=True,
-                                )
-
-                            # 鸟名和评分
-                            hist_score = record.get("score", 0)
-                            hist_score_color = get_score_color(hist_score)
-                            st.markdown(
-                                f'<p style="font-size:13px; font-weight:600; color:#1d1d1f; '
-                                f'margin:4px 0 2px; line-height:1.2;">{record.get("chinese_name", "未知")}</p>'
-                                f'<span class="score-pill score-{hist_score_color}" '
-                                f'style="font-size:11px; padding:2px 8px;">'
-                                f'{get_score_emoji(hist_score)} {hist_score}</span>',
-                                unsafe_allow_html=True,
-                            )
-
-                            # 日期
-                            created_at = record.get("created_at", "")
-                            if created_at:
-                                try:
-                                    date_display = created_at[:10]
+            # 拍照识别记录
+            if photo_records:
+                with st.expander(f"📷 拍摄识别记录（{len(photo_records)} 条）", expanded=True):
+                    for row_start in range(0, len(photo_records), 4):
+                        row_items = photo_records[row_start:row_start + 4]
+                        hist_cols = st.columns(4)
+                        for col_idx, record in enumerate(row_items):
+                            with hist_cols[col_idx]:
+                                thumb_b64 = record.get("thumbnail_base64", "")
+                                if thumb_b64:
                                     st.markdown(
-                                        f'<p style="font-size:11px; color:#86868b; margin:2px 0 8px;">'
-                                        f'📅 {date_display}</p>',
+                                        f'<img src="data:image/jpeg;base64,{thumb_b64}" '
+                                        f'style="width:100%; border-radius:10px; object-fit:contain;" '
+                                        f'loading="lazy" alt="bird">',
                                         unsafe_allow_html=True,
                                     )
-                                except Exception:
-                                    pass
+                                else:
+                                    st.markdown(
+                                        '<div style="height:80px; background:rgba(0,0,0,0.04); '
+                                        'border-radius:10px; display:flex; align-items:center; '
+                                        'justify-content:center; color:#86868b; font-size:20px;">🐦</div>',
+                                        unsafe_allow_html=True,
+                                    )
 
-                            # 删除按钮
+                                hist_score = record.get("score", 0)
+                                hist_score_color = get_score_color(hist_score)
+                                st.markdown(
+                                    f'<p style="font-size:13px; font-weight:600; color:#1d1d1f; '
+                                    f'margin:4px 0 2px; line-height:1.2;">{record.get("chinese_name", "未知")}</p>'
+                                    f'<span class="score-pill score-{hist_score_color}" '
+                                    f'style="font-size:11px; padding:2px 8px;">'
+                                    f'{get_score_emoji(hist_score)} {hist_score}</span>',
+                                    unsafe_allow_html=True,
+                                )
+
+                                created_at = record.get("created_at", "")
+                                if created_at:
+                                    try:
+                                        date_display = created_at[:10]
+                                        st.markdown(
+                                            f'<p style="font-size:11px; color:#86868b; margin:2px 0 8px;">'
+                                            f'📅 {date_display}</p>',
+                                            unsafe_allow_html=True,
+                                        )
+                                    except Exception:
+                                        pass
+
+                                record_id = record.get("id")
+                                if record_id:
+                                    if st.button("🗑️", key=f"del_{record_id}",
+                                                 help="删除这条记录",
+                                                 use_container_width=True):
+                                        st.session_state[pending_delete_key] = record_id
+                                        st.rerun()
+
+            # 导入的观鸟记录
+            if imported_records:
+                # 按鸟种去重展示
+                seen_imported = set()
+                unique_imported = []
+                for record in imported_records:
+                    name = record.get("chinese_name", "")
+                    if name and name not in seen_imported:
+                        seen_imported.add(name)
+                        unique_imported.append(record)
+
+                with st.expander(f"📥 导入的观鸟记录（{len(unique_imported)} 个鸟种）", expanded=False):
+                    # 紧凑的标签式布局
+                    tags_html = ""
+                    for record in unique_imported:
+                        bird_name = record.get("chinese_name", "未知")
+                        english_name = record.get("english_name", "")
+                        source_info = record.get("identification_basis", "")
+                        # 提取学名（存在 identification_basis 中）
+                        scientific_name = ""
+                        if "| " in source_info:
+                            scientific_name = source_info.split("| ", 1)[1].strip()
+
+                        subtitle = ""
+                        if english_name:
+                            subtitle = english_name
+                        elif scientific_name:
+                            subtitle = scientific_name
+
+                        tags_html += (
+                            f'<div style="display:inline-flex; align-items:center; gap:4px; '
+                            f'padding:6px 12px; margin:3px; background:rgba(102,126,234,0.08); '
+                            f'border-radius:20px; font-size:13px;">'
+                            f'<span style="font-weight:600; color:#1d1d1f;">{bird_name}</span>'
+                        )
+                        if subtitle:
+                            tags_html += (
+                                f'<span style="font-size:11px; color:#86868b; '
+                                f'font-style:italic;">{subtitle}</span>'
+                            )
+                        tags_html += '</div>'
+
+                    st.markdown(
+                        f'<div style="line-height:2.2;">{tags_html}</div>',
+                        unsafe_allow_html=True,
+                    )
+
+                    # 批量删除导入记录的按钮
+                    if st.button("🗑️ 清除所有导入记录", key="clear_imported",
+                                 use_container_width=True):
+                        cleared_count = 0
+                        for record in imported_records:
                             record_id = record.get("id")
-                            if record_id:
-                                if st.button("🗑️", key=f"del_{record_id}",
-                                             help="删除这条记录",
-                                             use_container_width=True):
-                                    st.session_state[pending_delete_key] = record_id
-                                    st.rerun()
+                            if record_id and delete_record_from_db(record_id):
+                                cleared_count += 1
+                        if cleared_count > 0:
+                            fetch_user_history.clear()
+                            fetch_leaderboard.clear()
+                            st.toast(f"✅ 已清除 {cleared_count} 条导入记录", icon="✅")
+                            st.rerun()
         else:
             st.markdown(
                 '<p style="text-align:center; color:#86868b; font-size:14px; padding:20px 0;">'
