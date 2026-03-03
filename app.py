@@ -1400,71 +1400,50 @@ def fetch_ebird_notable_nearby(latitude: float, longitude: float, ebird_api_key:
 
 
 @st.cache_data(ttl=7200, show_spinner=False)
-def translate_ebird_species(species_list: list, api_key: str) -> dict:
-    """用 AI 将 eBird 英文鸟名批量翻译为中文名。缓存 2 小时。
+def translate_ebird_species(species_list: list, ebird_api_key: str,
+                            _cache_version: int = 2) -> dict:
+    """通过 eBird taxonomy API 获取鸟种的官方中文名。缓存 2 小时。
 
+    使用 locale=zh 参数直接从 eBird 获取中文名，比 AI 翻译更准确可靠。
     返回 {english_name: chinese_name} 映射。
+    _cache_version: 缓存版本号，修改此值可强制刷新旧缓存。
     """
-    if not species_list or not api_key:
+    if not species_list or not ebird_api_key:
         return {}
 
-    # 构建 "英文名 (学名)" 列表，学名辅助提高翻译准确率
-    name_pairs = []
+    # 收集所有 species_code
+    code_to_english = {}
     for species in species_list:
-        common = species.get("common_name", "")
-        scientific = species.get("scientific_name", "")
-        if common:
-            name_pairs.append((common, scientific))
-    if not name_pairs:
+        code = species.get("species_code", "")
+        english_name = species.get("common_name", "")
+        if code and english_name:
+            code_to_english[code] = english_name
+    if not code_to_english:
         return {}
 
-    # 每次最多翻译 30 个
-    pairs_to_translate = name_pairs[:30]
-    names_str = "\n".join(
-        f"- {common} ({scientific})" if scientific else f"- {common}"
-        for common, scientific in pairs_to_translate
-    )
-
+    # eBird taxonomy API 支持逗号分隔的多个 species code
+    species_codes = ",".join(code_to_english.keys())
+    translations = {}
     try:
-        client = OpenAI(
-            api_key=api_key,
-            base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+        url = (
+            f"https://api.ebird.org/v2/ref/taxonomy/ebird?"
+            f"species={species_codes}&locale=zh&fmt=json"
         )
-        response = client.chat.completions.create(
-            model="qwen-plus",
-            temperature=0.1,
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "你是一位资深鸟类学专家，精通 eBird/IOC 英文鸟名与中国鸟类中文名的对照关系。"
-                        "你必须根据学名（拉丁名）来确定正确的中文名，而不是直译英文名。"
-                    ),
-                },
-                {
-                    "role": "user",
-                    "content": (
-                        "请将以下 eBird 英文鸟名翻译为中国鸟类学界使用的标准中文名，只返回 JSON 对象：\n"
-                        f"{names_str}\n\n"
-                        '格式：{"English Name": "中文名", ...}（key 只用英文名，不含学名）\n'
-                        "关键要求：\n"
-                        "1. 必须根据学名（拉丁名）查找对应的中文名，不要直译英文名\n"
-                        "2. 例如：Garganey (Spatula querquedula) → 白眉鸭（不是蓝翅鸭）\n"
-                        "3. 例如：Blue-winged Teal (Spatula discors) → 蓝翅鸭\n"
-                        "4. 例如：Barn Swallow (Hirundo rustica) → 家燕\n"
-                        "5. 例如：Eurasian Magpie (Pica pica) → 喜鹊\n"
-                        "6. 使用《中国鸟类分类与分布名录》或中国观鸟爱好者最常用的中文名"
-                    ),
-                },
-            ],
-        )
-        result_text = response.choices[0].message.content.strip()
-        json_match = re.search(r'\{.*\}', result_text, re.DOTALL)
-        if json_match:
-            return json.loads(json_match.group())
+        request = urllib.request.Request(url, headers={
+            "X-eBirdApiToken": ebird_api_key,
+            "User-Agent": "BirdPhotoApp/1.0",
+        })
+        with urllib.request.urlopen(request, timeout=15) as response:
+            data = json.loads(response.read().decode("utf-8"))
+            for taxon in data:
+                code = taxon.get("speciesCode", "")
+                chinese_name = taxon.get("comName", "")
+                english_name = code_to_english.get(code, "")
+                if english_name and chinese_name:
+                    translations[english_name] = chinese_name
     except Exception as exc:
-        print(f"[翻译] 鸟名翻译失败: {exc}")
-    return {}
+        print(f"[翻译] eBird taxonomy API 查询中文名失败: {exc}")
+    return translations
 
 def build_birding_recommendations(notable_species: list, user_species_set: set,
                                   name_translations: dict) -> list:
@@ -2984,196 +2963,12 @@ with hero_right:
 user_nickname = st.session_state["user_nickname"]
 
 # ============================================================
-# 探索推荐区（观鸟推荐 + 稀有鸟种 + 导入记录）
+# 探索推荐区（附近稀有鸟种推荐）
 # ============================================================
 if supabase_client and user_nickname:
-    # ============================================================
-    # 导入观鸟记录（eBird / 观鸟中心）— 带同步状态
-    # ============================================================
-    # 从数据库获取导入记录的同步信息
-    import_sync_info = _get_import_sync_info(
-        supabase_client, st.session_state["user_nickname"]
-    )
-    last_sync_date = import_sync_info.get("last_sync", "")
-    imported_total = import_sync_info.get("count", 0)
-
-    # 根据是否已有导入记录，决定 expander 标题
-    if imported_total > 0:
-        import_title = f"📥 观鸟记录同步 · {imported_total} 个鸟种"
-    else:
-        import_title = "📥 导入观鸟记录"
-
-    with st.expander(import_title, expanded=False):
-        # 同步状态卡片
-        if imported_total > 0:
-            st.markdown(
-                f'<div style="background:rgba(52,199,89,0.08); padding:10px 14px; '
-                f'border-radius:12px; margin-bottom:10px;">'
-                f'<div style="display:flex; align-items:center; justify-content:space-between;">'
-                f'<div>'
-                f'<span style="font-size:13px; font-weight:600; color:#1d1d1f;">'
-                f'✅ 已同步 {imported_total} 个鸟种</span><br>'
-                f'<span style="font-size:11px; color:#86868b;">'
-                f'📅 上次同步：{last_sync_date}</span>'
-                f'</div>'
-                f'<span style="font-size:11px; color:#86868b;">增量更新，不会重复导入</span>'
-                f'</div></div>',
-                unsafe_allow_html=True,
-            )
-
-        # 导入引导和上传区域
-        st.markdown(
-            '<p style="font-size:12px; color:#86868b; margin:0 0 6px;">'
-            '导入你在 eBird 或中国观鸟记录中心的历史记录，'
-            '系统会自动识别你已观察过的鸟种，让出行推荐更精准</p>',
-            unsafe_allow_html=True,
-        )
-
-        import_source = st.radio(
-            "数据来源",
-            ["eBird", "中国观鸟记录中心", "其他（通用 CSV）"],
-            horizontal=True,
-            label_visibility="collapsed",
-        )
-
-        # 下载步骤引导
-        if import_source == "eBird":
-            st.markdown(
-                '<div style="background:rgba(102,126,234,0.06); padding:8px 12px; '
-                'border-radius:10px; margin:4px 0 8px;">'
-                '<p style="font-size:12px; font-weight:600; color:#1d1d1f; margin:0 0 4px;">📋 下载步骤</p>'
-                '<p style="font-size:11px; color:#86868b; margin:0; line-height:1.6;">'
-                '1. 打开 <a href="https://ebird.org/downloadMyData" target="_blank" '
-                'style="color:#667eea;">ebird.org/downloadMyData</a><br>'
-                '2. 登录你的 eBird 账号<br>'
-                '3. 点击 "Download My Data" 按钮<br>'
-                '4. 将下载的 CSV 文件上传到下方</p></div>',
-                unsafe_allow_html=True,
-            )
-        elif import_source == "中国观鸟记录中心":
-            st.markdown(
-                '<div style="background:rgba(102,126,234,0.06); padding:8px 12px; '
-                'border-radius:10px; margin:4px 0 8px;">'
-                '<p style="font-size:12px; font-weight:600; color:#1d1d1f; margin:0 0 4px;">📋 下载步骤</p>'
-                '<p style="font-size:11px; color:#86868b; margin:0; line-height:1.6;">'
-                '1. 打开 <a href="https://www.birdreport.cn/" target="_blank" '
-                'style="color:#667eea;">birdreport.cn</a> 并登录<br>'
-                '2. 进入「我的记录」页面<br>'
-                '3. 导出观鸟记录为 CSV 文件<br>'
-                '4. 将下载的 CSV 文件上传到下方</p></div>',
-                unsafe_allow_html=True,
-            )
-        else:
-            st.markdown(
-                '<p style="font-size:11px; color:#aaa; margin:2px 0 4px;">'
-                '支持包含鸟种名称列的 CSV 文件（自动识别列名）</p>',
-                unsafe_allow_html=True,
-            )
-
-        button_label = "🔄 更新记录" if imported_total > 0 else "📤 上传 CSV"
-        import_csv_file = st.file_uploader(
-            button_label,
-            type=["csv"],
-            key="import_csv_uploader",
-            label_visibility="collapsed",
-        )
-
-        if import_csv_file:
-            csv_content = import_csv_file.getvalue().decode("utf-8", errors="ignore")
-            parsed_species = parse_import_csv(csv_content)
-
-            if parsed_species:
-                st.markdown(
-                    f'<p style="font-size:12px; color:#1d1d1f; margin:4px 0;">'
-                    f'📋 检测到 <b>{len(parsed_species)}</b> 个鸟种</p>',
-                    unsafe_allow_html=True,
-                )
-                preview_names = []
-                for species in parsed_species[:10]:
-                    name = species.get("chinese_name") or species.get("common_name", "")
-                    if name:
-                        preview_names.append(name)
-                if preview_names:
-                    st.markdown(
-                        f'<p style="font-size:11px; color:#86868b; margin:2px 0 6px;">'
-                        f'预览：{" · ".join(preview_names)}'
-                        f'{"…" if len(parsed_species) > 10 else ""}</p>',
-                        unsafe_allow_html=True,
-                    )
-
-                action_label = "🔄 增量更新" if imported_total > 0 else "🚀 开始导入"
-                if st.button(action_label, type="primary", use_container_width=True):
-                    with st.spinner("正在导入并翻译鸟种名称…"):
-                        imported, skipped, error = import_species_to_db(
-                            st.session_state["user_nickname"],
-                            parsed_species,
-                            api_key,
-                        )
-                    if error:
-                        st.error(f"导入出错：{error}")
-                    elif imported > 0:
-                        st.success(
-                            f"✅ 成功导入 **{imported}** 个新鸟种！"
-                            f"{'（' + str(skipped) + ' 个已存在，已跳过）' if skipped > 0 else ''}"
-                        )
-                        fetch_user_history.clear()
-                        st.rerun()
-                    else:
-                        st.info("所有鸟种都已存在，数据已是最新 👍")
-            else:
-                st.warning("⚠️ 未能从文件中识别出鸟种，请检查 CSV 格式")
-
-    # ============================================================
-    # 季节性鸟种推荐（根据当前月份和用户城市）
-    # ============================================================
-    import datetime
-    current_month = datetime.datetime.now().month
-    month_names = ["", "一月", "二月", "三月", "四月", "五月", "六月",
-                   "七月", "八月", "九月", "十月", "十一月", "十二月"]
-    season_emoji = {1: "❄️", 2: "❄️", 3: "🌸", 4: "🌸", 5: "🌸",
-                    6: "☀️", 7: "☀️", 8: "☀️", 9: "🍂", 10: "🍂",
-                    11: "🍂", 12: "❄️"}
-
     # 城市选择（保存在 session_state 中）
     if "user_city" not in st.session_state:
         st.session_state["user_city"] = "杭州"
-
-    with st.expander(f"{season_emoji.get(current_month, '🐦')} {month_names[current_month]}观鸟推荐", expanded=False):
-        user_city = st.text_input(
-            "你的城市",
-            value=st.session_state["user_city"],
-            key="city_input",
-            placeholder="输入城市名，如：杭州、北京、成都",
-            label_visibility="collapsed",
-        )
-        if user_city and user_city != st.session_state["user_city"]:
-            st.session_state["user_city"] = user_city
-            get_seasonal_bird_recommendations.clear()
-            st.rerun()
-
-        recommendations = get_seasonal_bird_recommendations(api_key, st.session_state["user_city"], current_month)
-        if recommendations:
-            bird_items_html = ""
-            for bird in recommendations:
-                emoji = bird.get("emoji", "🐦")
-                name = bird.get("name", "")
-                tip = bird.get("tip", "")
-                bird_items_html += (
-                    f'<div style="display:flex; align-items:center; gap:8px; '
-                    f'padding:6px 10px; background:rgba(102,126,234,0.06); '
-                    f'border-radius:10px; margin-bottom:4px;">'
-                    f'<span style="font-size:18px;">{emoji}</span>'
-                    f'<div>'
-                    f'<span style="font-size:13px; font-weight:600; color:#1d1d1f;">{name}</span>'
-                    f'<span style="font-size:11px; color:#86868b; margin-left:6px;">{tip}</span>'
-                    f'</div></div>'
-                )
-            st.markdown(
-                f'<div style="margin-top:4px;">{bird_items_html}</div>',
-                unsafe_allow_html=True,
-            )
-        else:
-            st.caption("正在加载推荐…")
 
     # ============================================================
     # 观鸟出行推荐（eBird 稀有鸟种 + 天气 + 个性化）
@@ -3220,8 +3015,8 @@ if supabase_client and user_nickname:
                     )
 
                 if notable_species:
-                    # 翻译英文鸟名为中文
-                    name_translations = translate_ebird_species(notable_species, api_key)
+                    # 通过 eBird taxonomy API 获取官方中文名
+                    name_translations = translate_ebird_species(notable_species, ebird_api_key)
 
                     # 获取用户已拍鸟种（影禽识别记录 + 导入的外部记录）
                     user_species_set = set()
@@ -3526,6 +3321,135 @@ if supabase_client and user_nickname:
                 '还没有识别记录，上传照片开始你的观鸟之旅吧 🐦</p>',
                 unsafe_allow_html=True,
             )
+
+        # ---- 导入外部观鸟记录（eBird / 观鸟中心） ----
+        import_sync_info = _get_import_sync_info(
+            supabase_client, st.session_state["user_nickname"]
+        )
+        last_sync_date = import_sync_info.get("last_sync", "")
+        imported_total = import_sync_info.get("count", 0)
+
+        if imported_total > 0:
+            import_expander_title = f"📥 导入/更新观鸟记录 · 已同步 {imported_total} 种"
+        else:
+            import_expander_title = "📥 导入外部观鸟记录"
+
+        with st.expander(import_expander_title, expanded=False):
+            if imported_total > 0:
+                st.markdown(
+                    f'<div style="background:rgba(52,199,89,0.08); padding:10px 14px; '
+                    f'border-radius:12px; margin-bottom:10px;">'
+                    f'<div style="display:flex; align-items:center; justify-content:space-between;">'
+                    f'<div>'
+                    f'<span style="font-size:13px; font-weight:600; color:#1d1d1f;">'
+                    f'✅ 已同步 {imported_total} 个鸟种</span><br>'
+                    f'<span style="font-size:11px; color:#86868b;">'
+                    f'📅 上次同步：{last_sync_date}</span>'
+                    f'</div>'
+                    f'<span style="font-size:11px; color:#86868b;">增量更新，不会重复导入</span>'
+                    f'</div></div>',
+                    unsafe_allow_html=True,
+                )
+
+            st.markdown(
+                '<p style="font-size:12px; color:#86868b; margin:0 0 6px;">'
+                '导入你在 eBird 或中国观鸟记录中心的历史记录，'
+                '系统会自动识别你已观察过的鸟种，让出行推荐更精准</p>',
+                unsafe_allow_html=True,
+            )
+
+            import_source = st.radio(
+                "数据来源",
+                ["eBird", "中国观鸟记录中心", "其他（通用 CSV）"],
+                horizontal=True,
+                label_visibility="collapsed",
+            )
+
+            if import_source == "eBird":
+                st.markdown(
+                    '<div style="background:rgba(102,126,234,0.06); padding:8px 12px; '
+                    'border-radius:10px; margin:4px 0 8px;">'
+                    '<p style="font-size:12px; font-weight:600; color:#1d1d1f; margin:0 0 4px;">📋 下载步骤</p>'
+                    '<p style="font-size:11px; color:#86868b; margin:0; line-height:1.6;">'
+                    '1. 打开 <a href="https://ebird.org/downloadMyData" target="_blank" '
+                    'style="color:#667eea;">ebird.org/downloadMyData</a><br>'
+                    '2. 登录你的 eBird 账号<br>'
+                    '3. 点击 "Download My Data" 按钮<br>'
+                    '4. 将下载的 CSV 文件上传到下方</p></div>',
+                    unsafe_allow_html=True,
+                )
+            elif import_source == "中国观鸟记录中心":
+                st.markdown(
+                    '<div style="background:rgba(102,126,234,0.06); padding:8px 12px; '
+                    'border-radius:10px; margin:4px 0 8px;">'
+                    '<p style="font-size:12px; font-weight:600; color:#1d1d1f; margin:0 0 4px;">📋 下载步骤</p>'
+                    '<p style="font-size:11px; color:#86868b; margin:0; line-height:1.6;">'
+                    '1. 打开 <a href="https://www.birdreport.cn/" target="_blank" '
+                    'style="color:#667eea;">birdreport.cn</a> 并登录<br>'
+                    '2. 进入「我的记录」页面<br>'
+                    '3. 导出观鸟记录为 CSV 文件<br>'
+                    '4. 将下载的 CSV 文件上传到下方</p></div>',
+                    unsafe_allow_html=True,
+                )
+            else:
+                st.markdown(
+                    '<p style="font-size:11px; color:#aaa; margin:2px 0 4px;">'
+                    '支持包含鸟种名称列的 CSV 文件（自动识别列名）</p>',
+                    unsafe_allow_html=True,
+                )
+
+            import_button_label = "🔄 更新记录" if imported_total > 0 else "📤 上传 CSV"
+            import_csv_file = st.file_uploader(
+                import_button_label,
+                type=["csv"],
+                key="import_csv_uploader",
+                label_visibility="collapsed",
+            )
+
+            if import_csv_file:
+                csv_content = import_csv_file.getvalue().decode("utf-8", errors="ignore")
+                parsed_species = parse_import_csv(csv_content)
+
+                if parsed_species:
+                    st.markdown(
+                        f'<p style="font-size:12px; color:#1d1d1f; margin:4px 0;">'
+                        f'📋 检测到 <b>{len(parsed_species)}</b> 个鸟种</p>',
+                        unsafe_allow_html=True,
+                    )
+                    preview_names = []
+                    for species in parsed_species[:10]:
+                        name = species.get("chinese_name") or species.get("common_name", "")
+                        if name:
+                            preview_names.append(name)
+                    if preview_names:
+                        st.markdown(
+                            f'<p style="font-size:11px; color:#86868b; margin:2px 0 6px;">'
+                            f'预览：{" · ".join(preview_names)}'
+                            f'{"…" if len(parsed_species) > 10 else ""}</p>',
+                            unsafe_allow_html=True,
+                        )
+
+                    import_action_label = "🔄 增量更新" if imported_total > 0 else "🚀 开始导入"
+                    if st.button(import_action_label, type="primary", use_container_width=True):
+                        with st.spinner("正在导入并翻译鸟种名称…"):
+                            imported, skipped, error = import_species_to_db(
+                                st.session_state["user_nickname"],
+                                parsed_species,
+                                api_key,
+                            )
+                        if error:
+                            st.error(f"导入出错：{error}")
+                        elif imported > 0:
+                            st.success(
+                                f"✅ 成功导入 **{imported}** 个新鸟种！"
+                                f"{'（' + str(skipped) + ' 个已存在，已跳过）' if skipped > 0 else ''}"
+                            )
+                            fetch_user_history.clear()
+                            st.rerun()
+                        else:
+                            st.info("所有鸟种都已存在，数据已是最新 👍")
+                else:
+                    st.warning("⚠️ 未能从文件中识别出鸟种，请检查 CSV 格式")
 
     # ---- 左栏：观鸟排行榜 ----
     with leaderboard_col:
