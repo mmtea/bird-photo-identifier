@@ -108,15 +108,15 @@ st.markdown("""
         padding-top: 1rem !important;
     }
 
-    /* 主标题区域 - 紧凑竖向 */
+    /* 主标题区域 */
     .hero-section {
-        text-align: center;
-        padding: 1.5rem 1rem;
+        padding: 16px 20px;
         position: relative;
         overflow: hidden;
         border-radius: 16px;
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        margin-bottom: 0;
+        margin-bottom: 4px;
+        box-shadow: 0 4px 20px rgba(102, 126, 234, 0.25);
     }
     .hero-icon {
         font-size: 40px;
@@ -531,19 +531,64 @@ st.markdown("""
         text-decoration: none;
     }
 
+    /* 区块容器 — 统一卡片风格 */
+    .section-block {
+        background: rgba(255, 255, 255, 0.82);
+        backdrop-filter: blur(20px) saturate(180%);
+        -webkit-backdrop-filter: blur(20px) saturate(180%);
+        border: 1px solid rgba(0, 0, 0, 0.06);
+        border-radius: 20px;
+        padding: 20px 20px 16px;
+        margin-top: 16px;
+        margin-bottom: 4px;
+        box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+    }
+
     /* Section 标题 */
     .section-title {
-        font-size: 22px;
+        font-size: 20px;
         font-weight: 700;
         color: #1d1d1f;
         letter-spacing: -0.02em;
-        margin: 12px 0 8px;
+        margin: 0 0 4px;
+        line-height: 1.3;
     }
     .section-subtitle {
-        font-size: 13px;
+        font-size: 12px;
         color: #86868b;
-        margin-top: -4px;
-        margin-bottom: 10px;
+        margin: 0 0 12px;
+        line-height: 1.4;
+    }
+    .section-header {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 12px;
+    }
+    .section-icon {
+        width: 36px;
+        height: 36px;
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 18px;
+        flex-shrink: 0;
+    }
+    .section-icon-explore {
+        background: linear-gradient(135deg, #667eea, #764ba2);
+    }
+    .section-icon-upload {
+        background: linear-gradient(135deg, #007aff, #5ac8fa);
+    }
+    .section-icon-gallery {
+        background: linear-gradient(135deg, #ff9500, #ff6b00);
+    }
+    .section-icon-history {
+        background: linear-gradient(135deg, #34c759, #30d158);
+    }
+    .section-icon-rank {
+        background: linear-gradient(135deg, #ff3b30, #ff6b6b);
     }
 
     /* PWA 安装提示横幅 */
@@ -2313,12 +2358,12 @@ if "user_nickname" not in st.session_state:
 # 顶部条：Logo + 登录/昵称（紧凑单行）
 # ============================================================
 st.markdown(
-    '<div class="hero-section" style="padding:16px 0 8px;">'
-    '<div style="display:flex;align-items:center;gap:12px;">'
-    '<span style="font-size:36px;">🦅</span>'
+    '<div class="hero-section">'
+    '<div style="display:flex;align-items:center;gap:14px;">'
+    '<span style="font-size:38px;filter:drop-shadow(0 2px 8px rgba(0,0,0,0.2));">🦅</span>'
     '<div>'
-    '<h1 style="font-size:24px;font-weight:800;margin:0;color:#1d1d1f;">影禽</h1>'
-    '<p style="font-size:13px;color:#86868b;margin:0;">BirdEye · 发现身边的鸟 · AI 识别与摄影评分</p>'
+    '<h1 style="font-size:24px;font-weight:800;margin:0;color:#fff;letter-spacing:-0.03em;">影禽</h1>'
+    '<p style="font-size:12px;color:rgba(255,255,255,0.8);margin:2px 0 0;">BirdEye · 发现身边的鸟 · AI 识别与摄影评分</p>'
     '</div>'
     '</div></div>',
     unsafe_allow_html=True,
@@ -2383,7 +2428,13 @@ if supabase_client and user_nickname:
 
     if ebird_api_key:
         st.markdown(
-            '<p class="section-title" style="margin-top:16px;">🔭 附近稀有鸟种 · 出行推荐</p>',
+            '<div class="section-block">'
+            '<div class="section-header">'
+            '<div class="section-icon section-icon-explore">🔭</div>'
+            '<div>'
+            '<p class="section-title">附近稀有鸟种 · 出行推荐</p>'
+            '<p class="section-subtitle">基于 eBird 数据，发现你周边的稀有鸟种</p>'
+            '</div></div></div>',
             unsafe_allow_html=True,
         )
         birding_city = st.text_input(
@@ -2532,12 +2583,13 @@ if supabase_client and user_nickname:
 # ============================================================
 if user_nickname:
     st.markdown(
-        '<p class="section-title" style="margin-top:20px;">📷 上传鸟类照片</p>',
-        unsafe_allow_html=True,
-    )
-    st.markdown(
-        f'<p style="font-size:12px; color:#86868b; margin:0 0 6px;">'
-        f'支持 JPG、PNG、RAW 等格式，每次最多 {MAX_PHOTOS_PER_SESSION} 张 · AI 自动识别鸟种并评分</p>',
+        '<div class="section-block">'
+        '<div class="section-header">'
+        '<div class="section-icon section-icon-upload">📷</div>'
+        '<div>'
+        '<p class="section-title">上传鸟类照片</p>'
+        f'<p class="section-subtitle">支持 JPG、PNG、RAW 等格式，每次最多 {MAX_PHOTOS_PER_SESSION} 张 · AI 自动识别鸟种并评分</p>'
+        '</div></div></div>',
         unsafe_allow_html=True,
     )
 
@@ -3049,7 +3101,13 @@ if user_nickname:
 # ============================================================
 if supabase_client:
     st.markdown(
-        '<p class="section-title" style="margin-top:20px;">📸 佳作榜 · 社区精选</p>',
+        '<div class="section-block">'
+        '<div class="section-header">'
+        '<div class="section-icon section-icon-gallery">📸</div>'
+        '<div>'
+        '<p class="section-title">佳作榜 · 社区精选</p>'
+        '<p class="section-subtitle">来自社区的优秀鸟类摄影作品</p>'
+        '</div></div></div>',
         unsafe_allow_html=True,
     )
     top_photos = fetch_top_photos(limit=10)
@@ -3129,7 +3187,16 @@ if supabase_client and user_nickname:
             st.toast("⚠️ 删除失败，请检查数据库权限", icon="⚠️")
 
     # ---- 我的观鸟记录 ----
-    st.markdown('<p class="section-title">📚 我的观鸟记录</p>', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="section-block">'
+        '<div class="section-header">'
+        '<div class="section-icon section-icon-history">📚</div>'
+        '<div>'
+        '<p class="section-title">我的观鸟记录</p>'
+        '<p class="section-subtitle">你的观鸟历程和成就</p>'
+        '</div></div></div>',
+        unsafe_allow_html=True,
+    )
 
     history_records = fetch_user_history(supabase_client, user_nickname)
     user_stats = fetch_user_stats_from_records(history_records)
@@ -3420,9 +3487,13 @@ if supabase_client and user_nickname:
 
     # ---- 观鸟排行榜 ----
     st.markdown(
-        '<div class="leaderboard-header">'
-        '<p class="leaderboard-header-title">🏆 排行榜</p>'
-        '</div>',
+        '<div class="section-block" style="padding-bottom:0;">'
+        '<div class="section-header">'
+        '<div class="section-icon section-icon-rank">🏆</div>'
+        '<div>'
+        '<p class="section-title">观鸟排行榜</p>'
+        '<p class="section-subtitle">看看谁拍的鸟种最多</p>'
+        '</div></div></div>',
         unsafe_allow_html=True,
     )
 
