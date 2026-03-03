@@ -1547,44 +1547,56 @@ def fetch_species_photo_urls(species_codes: tuple) -> dict:
 
     return photo_map
 
-def parse_ebird_csv_species(csv_content: str) -> set:
-    """解析 eBird 导出的 CSV 文件，提取所有鸟种的英文名和学名。
+def parse_import_csv(csv_content: str) -> list:
+    """解析 eBird 或观鸟中心导出的 CSV，提取去重后的鸟种列表。
 
-    eBird CSV 格式：第一列通常是 "Species"（或 "Common Name"），
-    还有 "Scientific Name" 列。
-    返回包含英文名和学名的集合，用于与推荐列表对比。
+    自动检测 CSV 格式（eBird / 观鸟中心 / 通用），
+    返回 [{"common_name": "...", "scientific_name": "...", "chinese_name": "..."}, ...] 去重列表。
     """
-    species_set = set()
     if not csv_content:
-        return species_set
+        return []
 
     lines = csv_content.strip().split("\n")
-    if not lines:
-        return species_set
+    if len(lines) < 2:
+        return []
 
-    # 解析表头，找到物种名称列
     header = lines[0]
-    # 尝试用逗号分隔
     separator = ","
     if "\t" in header:
         separator = "\t"
 
     columns = header.split(separator)
-    # 清理引号
     columns = [col.strip().strip('"').strip("'") for col in columns]
+    columns_lower = [col.lower().replace(" ", "_") for col in columns]
 
-    species_col_index = -1
-    scientific_col_index = -1
-    for idx, col in enumerate(columns):
-        col_lower = col.lower()
-        if col_lower in ("species", "common name", "common_name", "comname"):
-            species_col_index = idx
-        elif col_lower in ("scientific name", "scientific_name", "sciname"):
-            scientific_col_index = idx
+    # 自动检测列索引
+    common_name_idx = -1
+    scientific_name_idx = -1
+    chinese_name_idx = -1
 
-    # 如果找不到标准列名，假设第一列是物种名
-    if species_col_index == -1:
-        species_col_index = 0
+    for idx, col in enumerate(columns_lower):
+        if col in ("common_name", "common.name", "comname", "species"):
+            common_name_idx = idx
+        elif col in ("scientific_name", "scientific.name", "sciname"):
+            scientific_name_idx = idx
+        # 中文列名（观鸟中心格式）
+        if columns[idx] in ("鸟种", "鸟种名称", "中文名", "物种", "种名", "鸟名"):
+            chinese_name_idx = idx
+        elif columns[idx] in ("学名", "拉丁名", "拉丁学名"):
+            scientific_name_idx = idx
+
+    # 如果没找到任何已知列名，尝试启发式检测
+    if common_name_idx == -1 and chinese_name_idx == -1:
+        for idx, col in enumerate(columns):
+            # 检测是否包含中文字符（可能是中文鸟名列）
+            if any('\u4e00' <= ch <= '\u9fff' for ch in col):
+                chinese_name_idx = idx
+                break
+        if chinese_name_idx == -1:
+            common_name_idx = 0
+
+    seen_species = set()
+    species_list = []
 
     for line in lines[1:]:
         if not line.strip():
@@ -1592,16 +1604,158 @@ def parse_ebird_csv_species(csv_content: str) -> set:
         parts = line.split(separator)
         parts = [p.strip().strip('"').strip("'") for p in parts]
 
-        if species_col_index < len(parts):
-            name = parts[species_col_index].strip()
-            if name and name.lower() not in ("species", "common name", ""):
-                species_set.add(name)
-        if scientific_col_index >= 0 and scientific_col_index < len(parts):
-            sci_name = parts[scientific_col_index].strip()
-            if sci_name and sci_name.lower() not in ("scientific name", ""):
-                species_set.add(sci_name)
+        common_name = ""
+        scientific_name = ""
+        chinese_name = ""
 
-    return species_set
+        if common_name_idx >= 0 and common_name_idx < len(parts):
+            common_name = parts[common_name_idx].strip()
+        if scientific_name_idx >= 0 and scientific_name_idx < len(parts):
+            scientific_name = parts[scientific_name_idx].strip()
+        if chinese_name_idx >= 0 and chinese_name_idx < len(parts):
+            chinese_name = parts[chinese_name_idx].strip()
+
+        # 确定用于去重的唯一标识
+        dedup_key = chinese_name or common_name or scientific_name
+        if not dedup_key or dedup_key.lower() in ("species", "common name", "scientific name", "鸟种", ""):
+            continue
+
+        if dedup_key not in seen_species:
+            seen_species.add(dedup_key)
+            species_list.append({
+                "common_name": common_name,
+                "scientific_name": scientific_name,
+                "chinese_name": chinese_name,
+            })
+
+    return species_list
+
+def import_species_to_db(user_nickname: str, species_list: list,
+                         api_key: str = "") -> tuple:
+    """将导入的鸟种列表批量写入数据库。
+
+    对于英文名鸟种，先用 AI 翻译为中文名再入库。
+    返回 (imported_count, skipped_count, error_msg)。
+    """
+    if not species_list or not user_nickname:
+        return 0, 0, "无有效数据"
+
+    base_url, db_key = _supabase_config()
+    if not base_url or not db_key:
+        return 0, 0, "数据库未配置"
+
+    # 获取用户已有的鸟种（用于去重）
+    existing_species = set()
+    try:
+        encoded_nickname = urllib.parse.quote(user_nickname)
+        result = _supabase_request(
+            "GET", "bird_records",
+            params=f"user_nickname=eq.{encoded_nickname}&select=chinese_name,english_name"
+        )
+        if result and isinstance(result, list):
+            for record in result:
+                if record.get("chinese_name"):
+                    existing_species.add(record["chinese_name"])
+                if record.get("english_name"):
+                    existing_species.add(record["english_name"])
+    except Exception as exc:
+        print(f"[导入] 查询已有记录失败: {exc}")
+
+    # 筛选需要导入的新鸟种
+    new_species = []
+    for species in species_list:
+        chinese = species.get("chinese_name", "")
+        english = species.get("common_name", "")
+        scientific = species.get("scientific_name", "")
+        if chinese and chinese in existing_species:
+            continue
+        if english and english in existing_species:
+            continue
+        new_species.append(species)
+
+    if not new_species:
+        return 0, len(species_list), ""
+
+    # 对于只有英文名没有中文名的鸟种，批量翻译
+    need_translate = [s for s in new_species if not s.get("chinese_name") and s.get("common_name")]
+    if need_translate and api_key:
+        name_pairs = []
+        for species in need_translate:
+            name_pairs.append((species["common_name"], species.get("scientific_name", "")))
+
+        names_str = "\n".join(
+            f"- {common} ({scientific})" if scientific else f"- {common}"
+            for common, scientific in name_pairs[:30]
+        )
+        try:
+            client = OpenAI(
+                api_key=api_key,
+                base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+            )
+            response = client.chat.completions.create(
+                model="qwen-plus",
+                temperature=0.1,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "你是一位资深鸟类学专家，精通 eBird/IOC 英文鸟名与中国鸟类中文名的对照关系。"
+                            "你必须根据学名（拉丁名）来确定正确的中文名，而不是直译英文名。"
+                        ),
+                    },
+                    {
+                        "role": "user",
+                        "content": (
+                            "请将以下鸟名翻译为中文名，只返回 JSON 对象：\n"
+                            f"{names_str}\n\n"
+                            '格式：{"English Name": "中文名", ...}（key 只用英文名）\n'
+                            "必须根据学名查找对应中文名，不要直译英文名。"
+                        ),
+                    },
+                ],
+            )
+            result_text = response.choices[0].message.content.strip()
+            json_match = re.search(r'\{.*\}', result_text, re.DOTALL)
+            if json_match:
+                translations = json.loads(json_match.group())
+                for species in need_translate:
+                    translated = translations.get(species["common_name"], "")
+                    if translated:
+                        species["chinese_name"] = translated
+        except Exception as exc:
+            print(f"[导入] 翻译失败: {exc}")
+
+    # 批量写入数据库
+    imported_count = 0
+    for species in new_species:
+        chinese_name = species.get("chinese_name") or species.get("common_name", "未知鸟类")
+        english_name = species.get("common_name", "")
+        record = {
+            "user_nickname": user_nickname,
+            "chinese_name": chinese_name,
+            "english_name": english_name,
+            "confidence": "imported",
+            "score": 0,
+            "identification_basis": f"从外部平台导入 | {species.get('scientific_name', '')}",
+        }
+        url = f"{base_url}/rest/v1/bird_records"
+        headers = {
+            "apikey": db_key,
+            "Authorization": f"Bearer {db_key}",
+            "Content-Type": "application/json",
+            "Prefer": "return=minimal",
+        }
+        data = json.dumps(record).encode("utf-8")
+        req = urllib.request.Request(url, data=data, headers=headers, method="POST")
+        try:
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                if resp.status in (200, 201):
+                    imported_count += 1
+        except Exception as exc:
+            print(f"[导入] 写入 {chinese_name} 失败: {exc}")
+
+    skipped_count = len(species_list) - imported_count
+    return imported_count, skipped_count, ""
 
 def crop_to_bird(img: "Image.Image", bbox: list, padding_ratio: float = 0.15) -> "Image.Image":
     """根据 AI 返回的百分比 bounding box 裁剪图片，聚焦到鸟的区域。
@@ -2256,6 +2410,97 @@ with hero_right:
                 st.session_state.pop("zip_bytes", None)
                 st.rerun()
         # ============================================================
+        # 导入观鸟记录（eBird / 观鸟中心）
+        # ============================================================
+        with st.expander("📥 导入观鸟记录", expanded=False):
+            st.markdown(
+                '<p style="font-size:12px; color:#86868b; margin:0 0 6px;">'
+                '导入你在 eBird 或中国观鸟记录中心的历史记录，'
+                '系统会自动识别你已观察过的鸟种，让出行推荐更精准</p>',
+                unsafe_allow_html=True,
+            )
+            import_source = st.radio(
+                "数据来源",
+                ["eBird", "中国观鸟记录中心", "其他（通用 CSV）"],
+                horizontal=True,
+                label_visibility="collapsed",
+            )
+            if import_source == "eBird":
+                st.markdown(
+                    '<p style="font-size:11px; color:#aaa; margin:2px 0 4px;">'
+                    '在 <a href="https://ebird.org/downloadMyData" target="_blank" '
+                    'style="color:#667eea;">ebird.org/downloadMyData</a> '
+                    '点击 "Download My Data" 下载 CSV 文件</p>',
+                    unsafe_allow_html=True,
+                )
+            elif import_source == "中国观鸟记录中心":
+                st.markdown(
+                    '<p style="font-size:11px; color:#aaa; margin:2px 0 4px;">'
+                    '在 <a href="https://www.birdreport.cn/" target="_blank" '
+                    'style="color:#667eea;">birdreport.cn</a> '
+                    '导出你的观鸟记录 CSV 文件</p>',
+                    unsafe_allow_html=True,
+                )
+            else:
+                st.markdown(
+                    '<p style="font-size:11px; color:#aaa; margin:2px 0 4px;">'
+                    '支持包含鸟种名称列的 CSV 文件（自动识别列名）</p>',
+                    unsafe_allow_html=True,
+                )
+
+            import_csv_file = st.file_uploader(
+                "上传 CSV 文件",
+                type=["csv"],
+                key="import_csv_uploader",
+                label_visibility="collapsed",
+            )
+
+            if import_csv_file:
+                csv_content = import_csv_file.getvalue().decode("utf-8", errors="ignore")
+                parsed_species = parse_import_csv(csv_content)
+
+                if parsed_species:
+                    st.markdown(
+                        f'<p style="font-size:12px; color:#1d1d1f; margin:4px 0;">'
+                        f'📋 检测到 <b>{len(parsed_species)}</b> 个鸟种</p>',
+                        unsafe_allow_html=True,
+                    )
+                    # 预览前 10 个
+                    preview_names = []
+                    for species in parsed_species[:10]:
+                        name = species.get("chinese_name") or species.get("common_name", "")
+                        if name:
+                            preview_names.append(name)
+                    if preview_names:
+                        st.markdown(
+                            f'<p style="font-size:11px; color:#86868b; margin:2px 0 6px;">'
+                            f'预览：{" · ".join(preview_names)}'
+                            f'{"…" if len(parsed_species) > 10 else ""}</p>',
+                            unsafe_allow_html=True,
+                        )
+
+                    if st.button("🚀 开始导入", type="primary", use_container_width=True):
+                        with st.spinner("正在导入并翻译鸟种名称…"):
+                            imported, skipped, error = import_species_to_db(
+                                st.session_state["user_nickname"],
+                                parsed_species,
+                                api_key,
+                            )
+                        if error:
+                            st.error(f"导入出错：{error}")
+                        elif imported > 0:
+                            st.success(
+                                f"✅ 成功导入 **{imported}** 个新鸟种！"
+                                f"{'（' + str(skipped) + ' 个已存在，已跳过）' if skipped > 0 else ''}"
+                            )
+                            # 清除历史缓存，让推荐模块重新读取
+                            fetch_user_history.clear()
+                        else:
+                            st.info("所有鸟种都已存在，无需重复导入 👍")
+                else:
+                    st.warning("⚠️ 未能从文件中识别出鸟种，请检查 CSV 格式")
+
+        # ============================================================
         # 季节性鸟种推荐（根据当前月份和用户城市）
         # ============================================================
         import datetime
@@ -2355,16 +2600,17 @@ with hero_right:
                         # 翻译英文鸟名为中文
                         name_translations = translate_ebird_species(notable_species, api_key)
 
-                        # 获取用户已拍鸟种（合并影禽记录 + eBird CSV）
+                        # 获取用户已拍鸟种（影禽识别记录 + 导入的外部记录）
                         user_species_set = set()
                         if supabase_client and st.session_state.get("user_nickname"):
                             user_history = fetch_user_history(
                                 supabase_client, st.session_state["user_nickname"]
                             )
-                            user_species_set = set(
-                                r.get("chinese_name", "") for r in user_history
-                                if r.get("chinese_name")
-                            )
+                            for record in user_history:
+                                if record.get("chinese_name"):
+                                    user_species_set.add(record["chinese_name"])
+                                if record.get("english_name"):
+                                    user_species_set.add(record["english_name"])
                         # 构建个性化推荐
                         recommendations = build_birding_recommendations(
                             notable_species, user_species_set, name_translations
