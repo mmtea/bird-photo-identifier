@@ -1470,30 +1470,56 @@ def fetch_current_weather(latitude: float, longitude: float) -> dict:
 
 
 @st.cache_data(ttl=7200, show_spinner=False)
-def fetch_ebird_notable_nearby(latitude: float, longitude: float, ebird_api_key: str) -> list:
-    """查询 eBird 附近稀有鸟种观测记录（覆盖约 150km 范围）。缓存 2 小时。
-
-    eBird API 最大半径 50km，通过中心点 + 4 个偏移点（东南西北各 1°≈100km）
-    共 5 次查询合并去重，覆盖约 150km 范围（约 2 小时车程）。
-    """
-    if not ebird_api_key:
-        return []
-
-    # 5 个查询点：中心 + 东南西北偏移约 1°（≈100km）
-    query_points = [
-        (latitude, longitude),
-        (latitude + 1.0, longitude),
-        (latitude - 1.0, longitude),
-        (latitude, longitude + 1.0),
-        (latitude, longitude - 1.0),
+def _build_query_points(latitude: float, longitude: float, radius_km: int) -> list:
+    """根据搜索半径生成查询点列表。eBird API 单次最大 50km，超过需多点覆盖。"""
+    points = [(latitude, longitude)]
+    if radius_km <= 50:
+        return points
+    # 100km: 中心 + 东西南北各偏移 0.6°≈67km
+    if radius_km <= 100:
+        offset = 0.6
+        points += [
+            (latitude + offset, longitude),
+            (latitude - offset, longitude),
+            (latitude, longitude + offset),
+            (latitude, longitude - offset),
+        ]
+        return points
+    # 150km: 中心 + 东西南北各偏移 1°≈100km
+    if radius_km <= 150:
+        offset = 1.0
+        points += [
+            (latitude + offset, longitude),
+            (latitude - offset, longitude),
+            (latitude, longitude + offset),
+            (latitude, longitude - offset),
+        ]
+        return points
+    # 200km: 中心 + 8 方向偏移 1.3°≈145km
+    offset = 1.3
+    points += [
+        (latitude + offset, longitude),
+        (latitude - offset, longitude),
+        (latitude, longitude + offset),
+        (latitude, longitude - offset),
+        (latitude + offset, longitude + offset),
+        (latitude + offset, longitude - offset),
+        (latitude - offset, longitude + offset),
+        (latitude - offset, longitude - offset),
     ]
+    return points
 
+
+def _fetch_ebird_observations(query_points: list, ebird_api_key: str,
+                              endpoint: str, dist_km: int) -> dict:
+    """通用 eBird 观测数据查询，支持 notable 和 recent 两种 endpoint。"""
+    api_dist = min(dist_km, 50)
     all_observations = {}
     for lat, lng in query_points:
         try:
             url = (
-                f"https://api.ebird.org/v2/data/obs/geo/recent/notable?"
-                f"lat={lat:.4f}&lng={lng:.4f}&dist=50&back=7"
+                f"https://api.ebird.org/v2/data/obs/geo/recent/{endpoint}?"
+                f"lat={lat:.4f}&lng={lng:.4f}&dist={api_dist}&back=7"
             )
             request = urllib.request.Request(url, headers={
                 "X-eBirdApiToken": ebird_api_key,
@@ -1503,22 +1529,55 @@ def fetch_ebird_notable_nearby(latitude: float, longitude: float, ebird_api_key:
                 data = json.loads(response.read().decode("utf-8"))
                 for obs in data:
                     species_code = obs.get("speciesCode", "")
-                    if species_code and species_code not in all_observations:
+                    if not species_code:
+                        continue
+                    if species_code in all_observations:
+                        existing = all_observations[species_code]
+                        existing["how_many"] = max(
+                            existing.get("how_many", 1) or 1,
+                            obs.get("howMany", 1) or 1,
+                        )
+                        existing["obs_count"] = existing.get("obs_count", 1) + 1
+                    else:
                         all_observations[species_code] = {
                             "species_code": species_code,
                             "common_name": obs.get("comName", ""),
                             "scientific_name": obs.get("sciName", ""),
                             "location": obs.get("locName", ""),
                             "observation_date": obs.get("obsDt", ""),
-                            "how_many": obs.get("howMany", 1),
+                            "how_many": obs.get("howMany", 1) or 1,
                             "latitude": obs.get("lat", lat),
                             "longitude": obs.get("lng", lng),
+                            "obs_count": 1,
                         }
         except Exception as exc:
-            print(f"[eBird] 查询点 ({lat:.2f}, {lng:.2f}) 失败: {exc}")
+            print(f"[eBird] {endpoint} 查询点 ({lat:.2f}, {lng:.2f}) 失败: {exc}")
             continue
+    return all_observations
 
-    return list(all_observations.values())
+
+@st.cache_data(ttl=7200, show_spinner=False)
+def fetch_ebird_notable_nearby(latitude: float, longitude: float,
+                               ebird_api_key: str, radius_km: int = 150) -> list:
+    """查询 eBird 附近稀有鸟种观测记录。缓存 2 小时。"""
+    if not ebird_api_key:
+        return []
+    query_points = _build_query_points(latitude, longitude, radius_km)
+    observations = _fetch_ebird_observations(query_points, ebird_api_key, "notable", radius_km)
+    return list(observations.values())
+
+
+@st.cache_data(ttl=7200, show_spinner=False)
+def fetch_ebird_popular_nearby(latitude: float, longitude: float,
+                               ebird_api_key: str, radius_km: int = 50) -> list:
+    """查询 eBird 附近热门鸟种（按观测次数排序）。缓存 2 小时。"""
+    if not ebird_api_key:
+        return []
+    query_points = _build_query_points(latitude, longitude, radius_km)
+    observations = _fetch_ebird_observations(query_points, ebird_api_key, "", radius_km)
+    result = list(observations.values())
+    result.sort(key=lambda x: x.get("obs_count", 1), reverse=True)
+    return result
 
 
 @st.cache_data(ttl=7200, show_spinner=False)
@@ -2631,6 +2690,31 @@ if supabase_client and user_nickname:
         st.session_state["loc_city"] = selected_city
         st.session_state["loc_district"] = selected_district
 
+        # 搜索范围 & 鸟种类型选择
+        range_col, type_col = st.columns([3, 3])
+        distance_options = {
+            "5km": 5, "10km": 10, "50km": 50,
+            "100km": 100, "150km": 150, "200km": 200,
+        }
+        with range_col:
+            selected_range_label = st.selectbox(
+                "搜索范围",
+                list(distance_options.keys()),
+                index=4,
+                key="sel_range",
+            )
+        selected_radius_km = distance_options[selected_range_label]
+        bird_type_options = ["🔭 稀有鸟种", "🔥 热门鸟种"]
+        with type_col:
+            selected_bird_type = st.radio(
+                "鸟种类型",
+                bird_type_options,
+                index=0,
+                key="sel_bird_type",
+                horizontal=True,
+            )
+        is_notable_mode = selected_bird_type == bird_type_options[0]
+
         # 拼接地名用于地理编码
         location_query = selected_city
         if selected_district:
@@ -2640,7 +2724,14 @@ if supabase_client and user_nickname:
 
         if birding_lat and birding_lon:
             weather = fetch_current_weather(birding_lat, birding_lon)
-            notable_species = fetch_ebird_notable_nearby(birding_lat, birding_lon, ebird_api_key)
+            if is_notable_mode:
+                bird_species = fetch_ebird_notable_nearby(
+                    birding_lat, birding_lon, ebird_api_key, radius_km=selected_radius_km,
+                )
+            else:
+                bird_species = fetch_ebird_popular_nearby(
+                    birding_lat, birding_lon, ebird_api_key, radius_km=selected_radius_km,
+                )
 
             if weather:
                 st.markdown(
@@ -2656,8 +2747,8 @@ if supabase_client and user_nickname:
                     unsafe_allow_html=True,
                 )
 
-            if notable_species:
-                name_translations = translate_ebird_species(notable_species, ebird_api_key)
+            if bird_species:
+                name_translations = translate_ebird_species(bird_species, ebird_api_key)
 
                 user_species_set = set()
                 if supabase_client and st.session_state.get("user_nickname"):
@@ -2671,7 +2762,7 @@ if supabase_client and user_nickname:
                             user_species_set.add(record["english_name"])
 
                 recommendations = build_birding_recommendations(
-                    notable_species, user_species_set, name_translations
+                    bird_species, user_species_set, name_translations
                 )
 
                 species_codes_for_photos = tuple(
@@ -2683,10 +2774,11 @@ if supabase_client and user_nickname:
                 new_count = sum(1 for r in recommendations if r["is_new_species"])
                 total_count = len(recommendations)
 
+                type_label = "稀有鸟种" if is_notable_mode else "热门鸟种"
                 st.markdown(
                     f'<p style="font-size:12px; color:#86868b; margin:4px 0 8px;">'
-                    f'📍 {location_query}周边 150km · 近 7 天发现 <b style="color:#1d1d1f;">'
-                    f'{total_count}</b> 种稀有鸟种'
+                    f'📍 {location_query}周边 {selected_range_label} · 近 7 天发现 <b style="color:#1d1d1f;">'
+                    f'{total_count}</b> 种{type_label}'
                     f'{"，其中 <b style=color:#667eea;>" + str(new_count) + "</b> 种你还没拍过 🎯" if new_count > 0 else ""}'
                     f'</p>',
                     unsafe_allow_html=True,
@@ -2763,7 +2855,8 @@ if supabase_client and user_nickname:
                 if total_count > 15:
                     st.caption(f"还有 {total_count - 15} 种未显示…")
             else:
-                st.info("🔍 近 7 天该区域暂无稀有鸟种记录，试试换个城市？")
+                no_result_label = "稀有鸟种" if is_notable_mode else "热门鸟种"
+                st.info(f"🔍 近 7 天该区域暂无{no_result_label}记录，试试换个城市或扩大搜索范围？")
         else:
             st.warning("⚠️ 无法识别该城市，请输入更具体的地名")
 
