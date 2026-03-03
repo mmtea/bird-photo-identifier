@@ -11,6 +11,7 @@ import urllib.error
 import concurrent.futures
 from pathlib import Path
 from openai import OpenAI
+from china_cities import CHINA_PROVINCES_CITIES
 
 try:
     from PIL import Image
@@ -1352,6 +1353,48 @@ def geocode_city(city_name: str) -> tuple:
     return None, None
 
 
+@st.cache_data(ttl=86400, show_spinner=False)
+def reverse_geocode(latitude: float, longitude: float) -> dict:
+    """反向地理编码：经纬度 → 省市区。返回 {"province": ..., "city": ..., "district": ...}。"""
+    result = {"province": "", "city": "", "district": ""}
+    try:
+        url = (
+            f"https://nominatim.openstreetmap.org/reverse?"
+            f"lat={latitude}&lon={longitude}&format=json&accept-language=zh-CN&zoom=12"
+        )
+        request = urllib.request.Request(url, headers={"User-Agent": "BirdPhotoApp/1.0"})
+        with urllib.request.urlopen(request, timeout=10) as response:
+            data = json.loads(response.read().decode("utf-8"))
+            address = data.get("address", {})
+            result["province"] = address.get("state", "")
+            result["city"] = address.get("city", "") or address.get("town", "") or address.get("county", "")
+            result["district"] = address.get("suburb", "") or address.get("district", "") or address.get("village", "")
+    except Exception:
+        pass
+    return result
+
+
+def match_province_in_data(province_name: str) -> str:
+    """将反向地理编码返回的省名匹配到 CHINA_PROVINCES_CITIES 的 key。"""
+    if not province_name:
+        return ""
+    for key in CHINA_PROVINCES_CITIES:
+        if province_name in key or key in province_name:
+            return key
+    return ""
+
+
+def match_city_in_data(province_key: str, city_name: str) -> str:
+    """将反向地理编码返回的市名匹配到省下面的城市列表。"""
+    if not province_key or not city_name:
+        return ""
+    cities = CHINA_PROVINCES_CITIES.get(province_key, [])
+    for city in cities:
+        if city_name in city or city in city_name:
+            return city
+    return ""
+
+
 @st.cache_data(ttl=3600, show_spinner=False)
 def fetch_current_weather(latitude: float, longitude: float) -> dict:
     """通过 Open-Meteo 获取当前天气（免费，无需 API Key）。缓存 1 小时。"""
@@ -2448,8 +2491,15 @@ user_nickname = st.session_state["user_nickname"]
 # 第一区：附近稀有鸟种 · 出行推荐（核心功能，最醒目）
 # ============================================================
 if supabase_client and user_nickname:
-    if "user_city" not in st.session_state:
-        st.session_state["user_city"] = "杭州"
+    # 初始化定位 session state
+    if "loc_province" not in st.session_state:
+        st.session_state["loc_province"] = "浙江省"
+    if "loc_city" not in st.session_state:
+        st.session_state["loc_city"] = "杭州市"
+    if "loc_district" not in st.session_state:
+        st.session_state["loc_district"] = ""
+    if "geo_detected" not in st.session_state:
+        st.session_state["geo_detected"] = False
 
     ebird_api_key = ""
     try:
@@ -2468,17 +2518,104 @@ if supabase_client and user_nickname:
             '</div></div></div>',
             unsafe_allow_html=True,
         )
-        birding_city = st.text_input(
-            "你的位置",
-            value=st.session_state.get("user_city", "杭州"),
-            key="birding_city_input",
-            placeholder="输入城市名，如：杭州、北京",
-            label_visibility="collapsed",
-        )
-        if birding_city:
-            st.session_state["user_city"] = birding_city
 
-        birding_lat, birding_lon = geocode_city(birding_city or "杭州")
+        # 浏览器 Geolocation 自动定位（仅首次）
+        if not st.session_state["geo_detected"]:
+            geo_js = """
+            <div id="geo-status" style="font-size:12px;color:#86868b;padding:4px 0;">📍 正在获取定位...</div>
+            <script>
+            (function() {
+                if (navigator.geolocation) {
+                    navigator.geolocation.getCurrentPosition(
+                        function(pos) {
+                            const lat = pos.coords.latitude.toFixed(4);
+                            const lon = pos.coords.longitude.toFixed(4);
+                            document.getElementById('geo-status').innerHTML =
+                                '📍 已获取定位: ' + lat + ', ' + lon;
+                            // Send to Streamlit via query params
+                            const url = new URL(window.parent.location);
+                            url.searchParams.set('geo_lat', lat);
+                            url.searchParams.set('geo_lon', lon);
+                            window.parent.history.replaceState({}, '', url);
+                            // Trigger rerun
+                            window.parent.document.querySelectorAll('button[kind="secondary"]').forEach(function(){});
+                            setTimeout(function(){ window.parent.location.reload(); }, 500);
+                        },
+                        function(err) {
+                            document.getElementById('geo-status').innerHTML =
+                                '📍 定位失败，请手动选择位置';
+                        },
+                        {timeout: 8000, maximumAge: 300000}
+                    );
+                }
+            })();
+            </script>
+            """
+            # 检查是否已有 geo 参数
+            geo_lat_str = st.query_params.get("geo_lat", "")
+            geo_lon_str = st.query_params.get("geo_lon", "")
+            if geo_lat_str and geo_lon_str:
+                try:
+                    geo_lat = float(geo_lat_str)
+                    geo_lon = float(geo_lon_str)
+                    geo_result = reverse_geocode(geo_lat, geo_lon)
+                    matched_province = match_province_in_data(geo_result.get("province", ""))
+                    matched_city = match_city_in_data(matched_province, geo_result.get("city", ""))
+                    if matched_province:
+                        st.session_state["loc_province"] = matched_province
+                    if matched_city:
+                        st.session_state["loc_city"] = matched_city
+                    if geo_result.get("district"):
+                        st.session_state["loc_district"] = geo_result["district"]
+                    st.session_state["geo_detected"] = True
+                    # 清理 URL 参数
+                    st.query_params.pop("geo_lat", None)
+                    st.query_params.pop("geo_lon", None)
+                except (ValueError, TypeError):
+                    st.session_state["geo_detected"] = True
+            else:
+                import streamlit.components.v1 as components
+                components.html(geo_js, height=30)
+
+        # 省市区三级下拉选择
+        province_list = list(CHINA_PROVINCES_CITIES.keys())
+        current_province = st.session_state.get("loc_province", "浙江省")
+        province_index = province_list.index(current_province) if current_province in province_list else 0
+
+        loc_col1, loc_col2, loc_col3 = st.columns([2, 2, 2])
+        with loc_col1:
+            selected_province = st.selectbox(
+                "省份", province_list, index=province_index,
+                key="sel_province", label_visibility="collapsed",
+            )
+        city_list = CHINA_PROVINCES_CITIES.get(selected_province, [""])
+        current_city = st.session_state.get("loc_city", "")
+        city_index = city_list.index(current_city) if current_city in city_list else 0
+        with loc_col2:
+            selected_city = st.selectbox(
+                "城市", city_list, index=city_index,
+                key="sel_city", label_visibility="collapsed",
+            )
+        with loc_col3:
+            selected_district = st.text_input(
+                "区/镇（可选）",
+                value=st.session_state.get("loc_district", ""),
+                key="sel_district",
+                placeholder="区/县/镇",
+                label_visibility="collapsed",
+            )
+
+        # 更新 session state
+        st.session_state["loc_province"] = selected_province
+        st.session_state["loc_city"] = selected_city
+        st.session_state["loc_district"] = selected_district
+
+        # 拼接地名用于地理编码
+        location_query = selected_city
+        if selected_district:
+            location_query = f"{selected_city}{selected_district}"
+
+        birding_lat, birding_lon = geocode_city(location_query)
 
         if birding_lat and birding_lon:
             weather = fetch_current_weather(birding_lat, birding_lon)
@@ -2527,7 +2664,7 @@ if supabase_client and user_nickname:
 
                 st.markdown(
                     f'<p style="font-size:12px; color:#86868b; margin:4px 0 8px;">'
-                    f'📍 {birding_city}周边 150km · 近 7 天发现 <b style="color:#1d1d1f;">'
+                    f'📍 {location_query}周边 150km · 近 7 天发现 <b style="color:#1d1d1f;">'
                     f'{total_count}</b> 种稀有鸟种'
                     f'{"，其中 <b style=color:#667eea;>" + str(new_count) + "</b> 种你还没拍过 🎯" if new_count > 0 else ""}'
                     f'</p>',
