@@ -2407,56 +2407,74 @@ with hero_right:
                             unsafe_allow_html=True,
                         )
 
-                        # 推荐列表（带照片卡片）
+                        # 推荐列表（横向滚动大图卡片，类似佳作榜）
+                        bird_cards_html = ""
                         for bird in recommendations[:15]:
-                            new_badge = (
-                                '<span style="background:#667eea; color:#fff; font-size:10px; '
-                                'padding:1px 6px; border-radius:6px; margin-left:6px;">新种</span>'
+                            new_badge_html = (
+                                '<span style="position:absolute; top:6px; right:6px; '
+                                'background:#667eea; color:#fff; font-size:9px; '
+                                'padding:2px 6px; border-radius:6px; font-weight:600; '
+                                'letter-spacing:0.02em;">新种</span>'
                                 if bird["is_new_species"] else ""
                             )
                             date_str = bird.get("observation_date", "")[:10]
                             how_many = bird.get("how_many", 1)
-                            count_str = f"{how_many}只" if how_many and how_many > 1 else ""
+                            count_str = f" · {how_many}只" if how_many and how_many > 1 else ""
 
                             bird_photo_url = photo_urls.get(bird.get("species_code", ""), "")
-                            photo_html = ""
                             if bird_photo_url:
-                                photo_html = (
+                                card_img_html = (
                                     f'<img src="{bird_photo_url}" '
-                                    f'style="width:56px; height:56px; border-radius:10px; '
-                                    f'object-fit:cover; flex-shrink:0;" '
-                                    f'onerror="this.style.display=\'none\'" />'
+                                    f'style="width:100%;height:140px;object-fit:cover;'
+                                    f'border-radius:10px 10px 0 0;" '
+                                    f'loading="lazy" '
+                                    f'onerror="this.parentElement.innerHTML='
+                                    f"'<div style=\\'width:100%;height:140px;background:"
+                                    f"linear-gradient(135deg,#667eea,#764ba2);border-radius:"
+                                    f"10px 10px 0 0;display:flex;align-items:center;"
+                                    f"justify-content:center;font-size:40px;\\'>🐦</div>'"
+                                    f'" />'
                                 )
                             else:
-                                photo_html = (
-                                    '<div style="width:56px; height:56px; border-radius:10px; '
-                                    'background:linear-gradient(135deg,#667eea,#764ba2); '
-                                    'display:flex; align-items:center; justify-content:center; '
-                                    'flex-shrink:0;">'
-                                    '<span style="font-size:24px;">🐦</span></div>'
+                                card_img_html = (
+                                    '<div style="width:100%;height:140px;'
+                                    'background:linear-gradient(135deg,#667eea,#764ba2);'
+                                    'border-radius:10px 10px 0 0;display:flex;'
+                                    'align-items:center;justify-content:center;'
+                                    'font-size:40px;">🐦</div>'
                                 )
 
                             ebird_species_url = f"https://ebird.org/species/{bird.get('species_code', '')}"
 
-                            st.markdown(
-                                f'<div style="display:flex; align-items:flex-start; gap:10px; '
-                                f'padding:10px 12px; background:rgba(0,0,0,0.02); '
-                                f'border-radius:12px; margin-bottom:6px;">'
-                                f'{photo_html}'
-                                f'<div style="flex:1; min-width:0;">'
-                                f'<div style="font-size:13px; font-weight:600; color:#1d1d1f;">'
+                            bird_cards_html += (
                                 f'<a href="{ebird_species_url}" target="_blank" '
-                                f'style="color:#1d1d1f; text-decoration:none;">'
-                                f'{bird["chinese_name"]}</a>{new_badge}</div>'
-                                f'<div style="font-size:11px; color:#86868b; margin-top:2px;">'
-                                f'{bird.get("english_name", "")} · '
-                                f'<i>{bird.get("scientific_name", "")}</i></div>'
-                                f'<div style="font-size:11px; color:#86868b; margin-top:1px;">'
-                                f'📍 {bird.get("location", "未知")} · {date_str}'
-                                f'{" · " + count_str if count_str else ""}</div>'
-                                f'</div></div>',
-                                unsafe_allow_html=True,
+                                f'style="text-decoration:none; color:inherit;">'
+                                f'<div style="min-width:160px;max-width:160px;background:#fff;'
+                                f'border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,0.08);'
+                                f'flex-shrink:0;overflow:hidden;position:relative;">'
+                                f'{new_badge_html}'
+                                f'{card_img_html}'
+                                f'<div style="padding:8px 10px;">'
+                                f'<div style="font-size:13px;font-weight:600;color:#1d1d1f;'
+                                f'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'
+                                f'{bird["chinese_name"]}</div>'
+                                f'<div style="font-size:10px;color:#86868b;margin-top:2px;'
+                                f'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'
+                                f'{bird.get("english_name", "")}</div>'
+                                f'<div style="font-size:10px;color:#86868b;margin-top:1px;'
+                                f'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'
+                                f'📍 {bird.get("location", "未知")}</div>'
+                                f'<div style="font-size:10px;color:#aaa;margin-top:1px;">'
+                                f'{date_str}{count_str}</div>'
+                                f'</div></div></a>'
                             )
+
+                        st.markdown(
+                            f'<div style="display:flex;gap:10px;overflow-x:auto;'
+                            f'padding:4px 0 8px;-webkit-overflow-scrolling:touch;">'
+                            f'{bird_cards_html}</div>',
+                            unsafe_allow_html=True,
+                        )
 
                         if total_count > 15:
                             st.caption(f"还有 {total_count - 15} 种未显示…")
