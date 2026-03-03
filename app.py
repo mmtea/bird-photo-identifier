@@ -1988,13 +1988,49 @@ def fetch_user_history(_supabase_client, user_nickname: str, limit: int = 50) ->
             f"user_nickname=eq.{encoded_nickname}"
             f"&order=created_at.desc"
             f"&limit={limit}"
-            f"&select=id,chinese_name,score,created_at,thumbnail_base64"
+            f"&select=id,chinese_name,english_name,score,created_at,thumbnail_base64,confidence,identification_basis"
         )
         result = _supabase_request("GET", "bird_records", params=params)
         return result if isinstance(result, list) else []
     except Exception:
         return []
 
+
+def _get_import_sync_info(supabase_client, user_nickname: str) -> dict:
+    """获取用户导入记录的同步信息（鸟种数和最后同步时间）。"""
+    if not supabase_client or not user_nickname:
+        return {"count": 0, "last_sync": ""}
+    try:
+        encoded_nickname = urllib.parse.quote(user_nickname)
+        params = (
+            f"user_nickname=eq.{encoded_nickname}"
+            f"&confidence=eq.imported"
+            f"&select=chinese_name,created_at"
+            f"&order=created_at.desc"
+            f"&limit=500"
+        )
+        result = _supabase_request("GET", "bird_records", params=params)
+        if not result or not isinstance(result, list):
+            return {"count": 0, "last_sync": ""}
+
+        # 去重统计鸟种数
+        species_set = set()
+        for record in result:
+            name = record.get("chinese_name", "")
+            if name:
+                species_set.add(name)
+
+        # 最后同步时间（取最新的 created_at）
+        last_sync = ""
+        if result:
+            raw_date = result[0].get("created_at", "")
+            if raw_date:
+                last_sync = raw_date[:10]
+
+        return {"count": len(species_set), "last_sync": last_sync}
+    except Exception as exc:
+        print(f"[同步信息] 查询失败: {exc}")
+        return {"count": 0, "last_sync": ""}
 
 def delete_record_from_db(record_id: int) -> bool:
     """从数据库中删除一条识别记录"""
@@ -2436,35 +2472,79 @@ with hero_right:
                 st.session_state.pop("zip_bytes", None)
                 st.rerun()
         # ============================================================
-        # 导入观鸟记录（eBird / 观鸟中心）
+        # 导入观鸟记录（eBird / 观鸟中心）— 带同步状态
         # ============================================================
-        with st.expander("📥 导入观鸟记录", expanded=False):
+        # 从数据库获取导入记录的同步信息
+        import_sync_info = _get_import_sync_info(
+            supabase_client, st.session_state["user_nickname"]
+        )
+        last_sync_date = import_sync_info.get("last_sync", "")
+        imported_total = import_sync_info.get("count", 0)
+
+        # 根据是否已有导入记录，决定 expander 标题
+        if imported_total > 0:
+            import_title = f"📥 观鸟记录同步 · {imported_total} 个鸟种"
+        else:
+            import_title = "📥 导入观鸟记录"
+
+        with st.expander(import_title, expanded=False):
+            # 同步状态卡片
+            if imported_total > 0:
+                st.markdown(
+                    f'<div style="background:rgba(52,199,89,0.08); padding:10px 14px; '
+                    f'border-radius:12px; margin-bottom:10px;">'
+                    f'<div style="display:flex; align-items:center; justify-content:space-between;">'
+                    f'<div>'
+                    f'<span style="font-size:13px; font-weight:600; color:#1d1d1f;">'
+                    f'✅ 已同步 {imported_total} 个鸟种</span><br>'
+                    f'<span style="font-size:11px; color:#86868b;">'
+                    f'📅 上次同步：{last_sync_date}</span>'
+                    f'</div>'
+                    f'<span style="font-size:11px; color:#86868b;">增量更新，不会重复导入</span>'
+                    f'</div></div>',
+                    unsafe_allow_html=True,
+                )
+
+            # 导入引导和上传区域
             st.markdown(
                 '<p style="font-size:12px; color:#86868b; margin:0 0 6px;">'
                 '导入你在 eBird 或中国观鸟记录中心的历史记录，'
                 '系统会自动识别你已观察过的鸟种，让出行推荐更精准</p>',
                 unsafe_allow_html=True,
             )
+
             import_source = st.radio(
                 "数据来源",
                 ["eBird", "中国观鸟记录中心", "其他（通用 CSV）"],
                 horizontal=True,
                 label_visibility="collapsed",
             )
+
+            # 下载步骤引导
             if import_source == "eBird":
                 st.markdown(
-                    '<p style="font-size:11px; color:#aaa; margin:2px 0 4px;">'
-                    '在 <a href="https://ebird.org/downloadMyData" target="_blank" '
-                    'style="color:#667eea;">ebird.org/downloadMyData</a> '
-                    '点击 "Download My Data" 下载 CSV 文件</p>',
+                    '<div style="background:rgba(102,126,234,0.06); padding:8px 12px; '
+                    'border-radius:10px; margin:4px 0 8px;">'
+                    '<p style="font-size:12px; font-weight:600; color:#1d1d1f; margin:0 0 4px;">📋 下载步骤</p>'
+                    '<p style="font-size:11px; color:#86868b; margin:0; line-height:1.6;">'
+                    '1. 打开 <a href="https://ebird.org/downloadMyData" target="_blank" '
+                    'style="color:#667eea;">ebird.org/downloadMyData</a><br>'
+                    '2. 登录你的 eBird 账号<br>'
+                    '3. 点击 "Download My Data" 按钮<br>'
+                    '4. 将下载的 CSV 文件上传到下方</p></div>',
                     unsafe_allow_html=True,
                 )
             elif import_source == "中国观鸟记录中心":
                 st.markdown(
-                    '<p style="font-size:11px; color:#aaa; margin:2px 0 4px;">'
-                    '在 <a href="https://www.birdreport.cn/" target="_blank" '
-                    'style="color:#667eea;">birdreport.cn</a> '
-                    '导出你的观鸟记录 CSV 文件</p>',
+                    '<div style="background:rgba(102,126,234,0.06); padding:8px 12px; '
+                    'border-radius:10px; margin:4px 0 8px;">'
+                    '<p style="font-size:12px; font-weight:600; color:#1d1d1f; margin:0 0 4px;">📋 下载步骤</p>'
+                    '<p style="font-size:11px; color:#86868b; margin:0; line-height:1.6;">'
+                    '1. 打开 <a href="https://www.birdreport.cn/" target="_blank" '
+                    'style="color:#667eea;">birdreport.cn</a> 并登录<br>'
+                    '2. 进入「我的记录」页面<br>'
+                    '3. 导出观鸟记录为 CSV 文件<br>'
+                    '4. 将下载的 CSV 文件上传到下方</p></div>',
                     unsafe_allow_html=True,
                 )
             else:
@@ -2474,8 +2554,9 @@ with hero_right:
                     unsafe_allow_html=True,
                 )
 
+            button_label = "🔄 更新记录" if imported_total > 0 else "📤 上传 CSV"
             import_csv_file = st.file_uploader(
-                "上传 CSV 文件",
+                button_label,
                 type=["csv"],
                 key="import_csv_uploader",
                 label_visibility="collapsed",
@@ -2491,7 +2572,6 @@ with hero_right:
                         f'📋 检测到 <b>{len(parsed_species)}</b> 个鸟种</p>',
                         unsafe_allow_html=True,
                     )
-                    # 预览前 10 个
                     preview_names = []
                     for species in parsed_species[:10]:
                         name = species.get("chinese_name") or species.get("common_name", "")
@@ -2505,7 +2585,8 @@ with hero_right:
                             unsafe_allow_html=True,
                         )
 
-                    if st.button("🚀 开始导入", type="primary", use_container_width=True):
+                    action_label = "🔄 增量更新" if imported_total > 0 else "🚀 开始导入"
+                    if st.button(action_label, type="primary", use_container_width=True):
                         with st.spinner("正在导入并翻译鸟种名称…"):
                             imported, skipped, error = import_species_to_db(
                                 st.session_state["user_nickname"],
@@ -2519,10 +2600,10 @@ with hero_right:
                                 f"✅ 成功导入 **{imported}** 个新鸟种！"
                                 f"{'（' + str(skipped) + ' 个已存在，已跳过）' if skipped > 0 else ''}"
                             )
-                            # 清除历史缓存，让推荐模块重新读取
                             fetch_user_history.clear()
+                            st.rerun()
                         else:
-                            st.info("所有鸟种都已存在，无需重复导入 👍")
+                            st.info("所有鸟种都已存在，数据已是最新 👍")
                 else:
                     st.warning("⚠️ 未能从文件中识别出鸟种，请检查 CSV 格式")
 
