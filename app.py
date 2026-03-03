@@ -1427,15 +1427,18 @@ def translate_ebird_species(species_list: list, api_key: str) -> dict:
             messages=[
                 {
                     "role": "system",
-                    "content": "你是一位鸟类学专家，精通中英文鸟类名称对照。请将英文鸟名翻译为标准中文名。",
+                    "content": "你是一位鸟类学专家，精通中英文鸟类名称对照。请将英文鸟名翻译为中文俗名（常用名）。",
                 },
                 {
                     "role": "user",
                     "content": (
-                        "请将以下英文鸟名翻译为中文名，只返回 JSON 对象：\n"
+                        "请将以下英文鸟名翻译为中文俗名（常用名），只返回 JSON 对象：\n"
                         f"{names_str}\n\n"
-                        '格式：{"English Name": "中文名", ...}\n'
-                        "要求使用《中国鸟类分类与分布名录》中的标准中文名。"
+                        '格式：{"English Name": "中文俗名", ...}\n'
+                        "要求：\n"
+                        "1. 使用中国观鸟爱好者最常用的中文俗名，而非拉丁学名的直译\n"
+                        "2. 例如 Barn Swallow → 家燕，Eurasian Magpie → 喜鹊\n"
+                        "3. 如果是中国不常见的鸟种，使用最通行的中文译名"
                     ),
                 },
             ],
