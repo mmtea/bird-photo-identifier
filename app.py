@@ -2328,37 +2328,6 @@ with hero_right:
                 if birding_city:
                     st.session_state["user_city"] = birding_city
 
-                # eBird 生命列表上传（个性化对比数据源）
-                st.markdown(
-                    '<p style="font-size:11px; color:#86868b; margin:4px 0 2px;">'
-                    '📋 上传你的 eBird 生命列表 CSV，获得更精准的个性化推荐'
-                    '</p>',
-                    unsafe_allow_html=True,
-                )
-                ebird_csv_help_url = "https://ebird.org/downloadMyData"
-                st.markdown(
-                    f'<p style="font-size:10px; color:#aaa; margin:0 0 6px;">'
-                    f'在 <a href="{ebird_csv_help_url}" target="_blank" '
-                    f'style="color:#667eea;">eBird 数据下载页</a> 点击 "Download My Data" 即可导出</p>',
-                    unsafe_allow_html=True,
-                )
-                ebird_csv_file = st.file_uploader(
-                    "上传 eBird CSV",
-                    type=["csv"],
-                    key="ebird_csv_uploader",
-                    label_visibility="collapsed",
-                )
-                ebird_species_set = set()
-                if ebird_csv_file:
-                    csv_content = ebird_csv_file.getvalue().decode("utf-8", errors="ignore")
-                    ebird_species_set = parse_ebird_csv_species(csv_content)
-                    if ebird_species_set:
-                        st.markdown(
-                            f'<p style="font-size:11px; color:#34c759; margin:2px 0 6px;">'
-                            f'✅ 已导入 eBird 生命列表，共 <b>{len(ebird_species_set)}</b> 个鸟种</p>',
-                            unsafe_allow_html=True,
-                        )
-
                 # 地理编码
                 birding_lat, birding_lon = geocode_city(birding_city or "杭州")
 
@@ -2396,10 +2365,6 @@ with hero_right:
                                 r.get("chinese_name", "") for r in user_history
                                 if r.get("chinese_name")
                             )
-                        # 合并 eBird CSV 中的鸟种（英文名 + 学名）
-                        if ebird_species_set:
-                            user_species_set = user_species_set | ebird_species_set
-
                         # 构建个性化推荐
                         recommendations = build_birding_recommendations(
                             notable_species, user_species_set, name_translations
