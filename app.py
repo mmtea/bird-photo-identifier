@@ -558,6 +558,25 @@ st.markdown("""
         margin-left: -1rem;
         margin-right: -1rem;
         box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+        cursor: pointer;
+        user-select: none;
+        position: relative;
+    }
+    .section-block .section-header {
+        position: relative;
+    }
+    /* 收起/展开箭头 */
+    .section-toggle {
+        position: absolute;
+        right: 0;
+        top: 50%;
+        transform: translateY(-50%);
+        font-size: 16px;
+        color: #86868b;
+        transition: transform 0.3s ease;
+    }
+    .section-toggle.collapsed {
+        transform: translateY(-50%) rotate(-90deg);
     }
 
     /* Section 标题 */
@@ -2509,13 +2528,15 @@ if supabase_client and user_nickname:
 
     if ebird_api_key:
         st.markdown(
-            '<div class="section-block">'
+            '<div class="section-block" data-section="explore">'
             '<div class="section-header">'
             '<div class="section-icon section-icon-explore">🔭</div>'
             '<div>'
             '<p class="section-title">附近稀有鸟种 · 出行推荐</p>'
             '<p class="section-subtitle">基于 eBird 数据，发现你周边的稀有鸟种</p>'
-            '</div></div></div>',
+            '</div>'
+            '<span class="section-toggle">▼</span>'
+            '</div></div>',
             unsafe_allow_html=True,
         )
 
@@ -2751,13 +2772,15 @@ if supabase_client and user_nickname:
 # ============================================================
 if user_nickname:
     st.markdown(
-        '<div class="section-block">'
+        '<div class="section-block" data-section="upload">'
         '<div class="section-header">'
         '<div class="section-icon section-icon-upload">📷</div>'
         '<div>'
         '<p class="section-title">上传鸟类照片</p>'
         f'<p class="section-subtitle">支持 JPG、PNG、RAW 等格式，每次最多 {MAX_PHOTOS_PER_SESSION} 张 · AI 自动识别鸟种并评分</p>'
-        '</div></div></div>',
+        '</div>'
+        '<span class="section-toggle">▼</span>'
+        '</div></div>',
         unsafe_allow_html=True,
     )
 
@@ -3269,13 +3292,15 @@ if user_nickname:
 # ============================================================
 if supabase_client:
     st.markdown(
-        '<div class="section-block">'
+        '<div class="section-block" data-section="gallery">'
         '<div class="section-header">'
         '<div class="section-icon section-icon-gallery">📸</div>'
         '<div>'
         '<p class="section-title">佳作榜 · 社区精选</p>'
         '<p class="section-subtitle">来自社区的优秀鸟类摄影作品</p>'
-        '</div></div></div>',
+        '</div>'
+        '<span class="section-toggle">▼</span>'
+        '</div></div>',
         unsafe_allow_html=True,
     )
     top_photos = fetch_top_photos(limit=10)
@@ -3356,13 +3381,15 @@ if supabase_client and user_nickname:
 
     # ---- 我的观鸟记录 ----
     st.markdown(
-        '<div class="section-block">'
+        '<div class="section-block" data-section="history">'
         '<div class="section-header">'
         '<div class="section-icon section-icon-history">📚</div>'
         '<div>'
         '<p class="section-title">我的观鸟记录</p>'
         '<p class="section-subtitle">你的观鸟历程和成就</p>'
-        '</div></div></div>',
+        '</div>'
+        '<span class="section-toggle">▼</span>'
+        '</div></div>',
         unsafe_allow_html=True,
     )
 
@@ -3655,13 +3682,15 @@ if supabase_client and user_nickname:
 
     # ---- 观鸟排行榜 ----
     st.markdown(
-        '<div class="section-block" style="padding-bottom:0;">'
+        '<div class="section-block" data-section="rank" style="padding-bottom:0;">'
         '<div class="section-header">'
         '<div class="section-icon section-icon-rank">🏆</div>'
         '<div>'
         '<p class="section-title">观鸟排行榜</p>'
         '<p class="section-subtitle">看看谁拍的鸟种最多</p>'
-        '</div></div></div>',
+        '</div>'
+        '<span class="section-toggle">▼</span>'
+        '</div></div>',
         unsafe_allow_html=True,
     )
 
@@ -3705,6 +3734,52 @@ if supabase_client and user_nickname:
             '</div>',
             unsafe_allow_html=True,
         )
+
+# ============================================================
+# 区块收起/展开 JS 脚本
+# ============================================================
+st.markdown(
+    """
+    <script>
+    (function() {
+        function initSectionToggles() {
+            var blocks = document.querySelectorAll('.section-block[data-section]');
+            blocks.forEach(function(block) {
+                if (block.dataset.toggleBound) return;
+                block.dataset.toggleBound = 'true';
+                block.addEventListener('click', function() {
+                    var toggle = block.querySelector('.section-toggle');
+                    var parent = block.closest('[data-stale-container]') || block.parentElement;
+                    if (!parent) return;
+                    var siblings = [];
+                    var node = parent.nextElementSibling;
+                    while (node) {
+                        if (node.querySelector && node.querySelector('.section-block[data-section]')) break;
+                        siblings.push(node);
+                        node = node.nextElementSibling;
+                    }
+                    var isCollapsed = toggle && toggle.classList.contains('collapsed');
+                    siblings.forEach(function(sib) {
+                        sib.style.display = isCollapsed ? '' : 'none';
+                    });
+                    if (toggle) {
+                        toggle.classList.toggle('collapsed');
+                        toggle.textContent = isCollapsed ? '▼' : '▶';
+                    }
+                });
+            });
+        }
+        // Run on load and observe DOM changes for Streamlit reruns
+        setTimeout(initSectionToggles, 500);
+        var observer = new MutationObserver(function() {
+            setTimeout(initSectionToggles, 200);
+        });
+        observer.observe(document.body, {childList: true, subtree: true});
+    })();
+    </script>
+    """,
+    unsafe_allow_html=True,
+)
 
 # ============================================================
 # 页脚
