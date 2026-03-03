@@ -3736,49 +3736,77 @@ if supabase_client and user_nickname:
         )
 
 # ============================================================
-# 区块收起/展开 JS 脚本
+# 区块收起/展开 JS 脚本（通过 components.html 注入到 iframe，操作父页面 DOM）
 # ============================================================
-st.markdown(
+import streamlit.components.v1 as components
+components.html(
     """
     <script>
     (function() {
-        function initSectionToggles() {
-            var blocks = document.querySelectorAll('.section-block[data-section]');
+        var doc = window.parent.document;
+
+        function findBlockWrapper(block) {
+            // Streamlit DOM: .section-block -> stMarkdown -> stElementContainer -> stVerticalBlock child
+            // Walk up until we find a direct child of a stVerticalBlock
+            var node = block;
+            for (var i = 0; i < 10; i++) {
+                if (!node.parentElement) break;
+                var p = node.parentElement;
+                var testid = p.getAttribute('data-testid') || '';
+                if (testid === 'stVerticalBlock' || testid.indexOf('VerticalBlock') >= 0 ||
+                    (p.classList && (p.classList.contains('block-container') ||
+                     p.classList.contains('stVerticalBlock')))) {
+                    return node;
+                }
+                // Also check class names for vertical-block patterns
+                var cls = p.className || '';
+                if (cls.indexOf('vertical') >= 0 && cls.indexOf('block') >= 0) {
+                    return node;
+                }
+                node = p;
+            }
+            // Fallback: return grandparent of block
+            return block.parentElement ? block.parentElement.parentElement || block.parentElement : block;
+        }
+
+        function initToggles() {
+            var blocks = doc.querySelectorAll('.section-block[data-section]');
             blocks.forEach(function(block) {
-                if (block.dataset.toggleBound) return;
-                block.dataset.toggleBound = 'true';
-                block.addEventListener('click', function() {
+                if (block.getAttribute('data-toggle-ready')) return;
+                block.setAttribute('data-toggle-ready', '1');
+                block.addEventListener('click', function(e) {
                     var toggle = block.querySelector('.section-toggle');
-                    var parent = block.closest('[data-stale-container]') || block.parentElement;
-                    if (!parent) return;
-                    var siblings = [];
-                    var node = parent.nextElementSibling;
-                    while (node) {
-                        if (node.querySelector && node.querySelector('.section-block[data-section]')) break;
-                        siblings.push(node);
-                        node = node.nextElementSibling;
+                    var wrapper = findBlockWrapper(block);
+                    if (!wrapper || !wrapper.parentElement) return;
+                    var parent = wrapper.parentElement;
+                    var kids = Array.from(parent.children);
+                    var idx = kids.indexOf(wrapper);
+                    if (idx < 0) return;
+                    var targets = [];
+                    for (var i = idx + 1; i < kids.length; i++) {
+                        if (kids[i].querySelector && kids[i].querySelector('.section-block[data-section]')) break;
+                        targets.push(kids[i]);
                     }
-                    var isCollapsed = toggle && toggle.classList.contains('collapsed');
-                    siblings.forEach(function(sib) {
-                        sib.style.display = isCollapsed ? '' : 'none';
-                    });
+                    if (targets.length === 0) return;
+                    var hidden = targets[0].style.display === 'none';
+                    targets.forEach(function(t) { t.style.display = hidden ? '' : 'none'; });
                     if (toggle) {
-                        toggle.classList.toggle('collapsed');
-                        toggle.textContent = isCollapsed ? '▼' : '▶';
+                        toggle.textContent = hidden ? '▼' : '▶';
+                        if (hidden) toggle.classList.remove('collapsed');
+                        else toggle.classList.add('collapsed');
                     }
                 });
             });
         }
-        // Run on load and observe DOM changes for Streamlit reruns
-        setTimeout(initSectionToggles, 500);
-        var observer = new MutationObserver(function() {
-            setTimeout(initSectionToggles, 200);
-        });
-        observer.observe(document.body, {childList: true, subtree: true});
+        // Init after page loads, and re-init on DOM changes
+        setTimeout(initToggles, 1500);
+        setTimeout(initToggles, 4000);
+        var obs = new MutationObserver(function() { setTimeout(initToggles, 600); });
+        obs.observe(doc.body, {childList: true, subtree: true});
     })();
     </script>
     """,
-    unsafe_allow_html=True,
+    height=0,
 )
 
 # ============================================================
