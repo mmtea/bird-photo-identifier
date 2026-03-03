@@ -2366,20 +2366,20 @@ if "user_nickname" not in st.session_state:
 # ============================================================
 # 顶部条：Logo + 登录/昵称（紧凑单行）
 # ============================================================
-st.markdown(
-    '<div class="hero-section">'
-    '<div style="display:flex;align-items:center;gap:14px;">'
-    '<span style="font-size:38px;filter:drop-shadow(0 2px 8px rgba(0,0,0,0.2));">🦅</span>'
-    '<div>'
-    '<h1 style="font-size:24px;font-weight:800;margin:0;color:#fff;letter-spacing:-0.03em;">影禽</h1>'
-    '<p style="font-size:12px;color:rgba(255,255,255,0.8);margin:2px 0 0;">BirdEye · 发现身边的鸟 · AI 识别与摄影评分</p>'
-    '</div>'
-    '</div></div>',
-    unsafe_allow_html=True,
-)
-
-# 用户登录区
+# 顶部条：Logo + 用户名/登录
 if not st.session_state["user_nickname"]:
+    # 未登录：只显示 Logo
+    st.markdown(
+        '<div class="hero-section">'
+        '<div style="display:flex;align-items:center;gap:14px;">'
+        '<span style="font-size:38px;filter:drop-shadow(0 2px 8px rgba(0,0,0,0.2));">🦅</span>'
+        '<div>'
+        '<h1 style="font-size:24px;font-weight:800;margin:0;color:#fff;letter-spacing:-0.03em;">影禽</h1>'
+        '<p style="font-size:12px;color:rgba(255,255,255,0.8);margin:2px 0 0;">BirdEye · 发现身边的鸟 · AI 识别与摄影评分</p>'
+        '</div>'
+        '</div></div>',
+        unsafe_allow_html=True,
+    )
     st.markdown(
         '<div class="login-card">'
         '<p class="login-title">👋 欢迎来到影禽</p>'
@@ -2404,15 +2404,31 @@ else:
     if st.query_params.get("nick", "") != nickname_display:
         st.query_params["nick"] = nickname_display
 
-    col_greeting, col_switch = st.columns([4, 1])
-    with col_greeting:
+    # 已登录：Logo 左侧 + 用户名右侧，一行搞定
+    hero_col, user_col = st.columns([5, 2])
+    with hero_col:
         st.markdown(
-            f'<p style="font-size:15px; color:#86868b; margin:4px 0;">'
-            f'🐦 <b style="color:#1d1d1f; font-size:17px;">{nickname_display}</b></p>',
+            '<div class="hero-section" style="margin-bottom:0;">'
+            '<div style="display:flex;align-items:center;gap:14px;">'
+            '<span style="font-size:38px;filter:drop-shadow(0 2px 8px rgba(0,0,0,0.2));">🦅</span>'
+            '<div>'
+            '<h1 style="font-size:24px;font-weight:800;margin:0;color:#fff;letter-spacing:-0.03em;">影禽</h1>'
+            '<p style="font-size:12px;color:rgba(255,255,255,0.8);margin:2px 0 0;">BirdEye · 发现身边的鸟 · AI 识别与摄影评分</p>'
+            '</div>'
+            '</div></div>',
             unsafe_allow_html=True,
         )
-    with col_switch:
-        if st.button("切换", type="secondary", use_container_width=True):
+    with user_col:
+        st.markdown(
+            f'<div style="display:flex;align-items:center;justify-content:flex-end;'
+            f'height:100%;padding:8px 0;">'
+            f'<span style="font-size:14px;color:#86868b;">🐦</span>'
+            f'<span style="font-size:15px;font-weight:600;color:#1d1d1f;margin:0 8px 0 4px;">'
+            f'{nickname_display}</span>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+        if st.button("切换账号", type="secondary", use_container_width=True, key="switch_user"):
             st.session_state["user_nickname"] = ""
             st.query_params.pop("nick", None)
             st.session_state.pop("identified_cache", None)
