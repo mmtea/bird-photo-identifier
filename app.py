@@ -1277,6 +1277,212 @@ def get_seasonal_bird_recommendations(api_key: str, city: str, month: int) -> li
     return []
 
 
+def geocode_city(city_name: str) -> tuple:
+    """将城市名转为经纬度坐标（正向地理编码）。返回 (lat, lon) 或 (None, None)。"""
+    try:
+        encoded_city = urllib.parse.quote(city_name)
+        url = f"https://nominatim.openstreetmap.org/search?q={encoded_city}&format=json&limit=1&accept-language=zh-CN"
+        request = urllib.request.Request(url, headers={"User-Agent": "BirdPhotoApp/1.0"})
+        with urllib.request.urlopen(request, timeout=10) as response:
+            data = json.loads(response.read().decode("utf-8"))
+            if data and len(data) > 0:
+                return float(data[0]["lat"]), float(data[0]["lon"])
+    except Exception:
+        pass
+    return None, None
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def fetch_current_weather(latitude: float, longitude: float) -> dict:
+    """通过 Open-Meteo 获取当前天气（免费，无需 API Key）。缓存 1 小时。"""
+    try:
+        url = (
+            f"https://api.open-meteo.com/v1/forecast?"
+            f"latitude={latitude}&longitude={longitude}"
+            f"&current_weather=true&timezone=auto"
+        )
+        request = urllib.request.Request(url, headers={"User-Agent": "BirdPhotoApp/1.0"})
+        with urllib.request.urlopen(request, timeout=10) as response:
+            data = json.loads(response.read().decode("utf-8"))
+            current = data.get("current_weather", {})
+            temperature = current.get("temperature", 0)
+            windspeed = current.get("windspeed", 0)
+            weathercode = current.get("weathercode", 0)
+
+            # WMO 天气代码转描述和 emoji
+            weather_descriptions = {
+                0: ("晴", "☀️"), 1: ("大部晴", "🌤️"), 2: ("多云", "⛅"),
+                3: ("阴天", "☁️"), 45: ("雾", "🌫️"), 48: ("雾凇", "🌫️"),
+                51: ("小毛毛雨", "🌦️"), 53: ("毛毛雨", "🌦️"), 55: ("大毛毛雨", "🌦️"),
+                61: ("小雨", "🌧️"), 63: ("中雨", "🌧️"), 65: ("大雨", "🌧️"),
+                71: ("小雪", "🌨️"), 73: ("中雪", "🌨️"), 75: ("大雪", "🌨️"),
+                80: ("阵雨", "🌦️"), 81: ("中阵雨", "🌧️"), 82: ("大阵雨", "🌧️"),
+                95: ("雷暴", "⛈️"), 96: ("冰雹雷暴", "⛈️"), 99: ("大冰雹雷暴", "⛈️"),
+            }
+            description, emoji = weather_descriptions.get(weathercode, ("未知", "🌡️"))
+
+            # 观鸟适宜度评估
+            birding_score = "适宜"
+            birding_emoji = "✅"
+            if weathercode >= 61 or windspeed > 30:
+                birding_score = "不太适宜"
+                birding_emoji = "⚠️"
+            elif weathercode >= 95:
+                birding_score = "不建议外出"
+                birding_emoji = "❌"
+            elif weathercode <= 2 and windspeed < 15:
+                birding_score = "非常适宜"
+                birding_emoji = "🌟"
+
+            return {
+                "temperature": temperature,
+                "windspeed": windspeed,
+                "description": description,
+                "emoji": emoji,
+                "birding_score": birding_score,
+                "birding_emoji": birding_emoji,
+            }
+    except Exception as exc:
+        print(f"[天气] 获取失败: {exc}")
+    return {}
+
+
+@st.cache_data(ttl=7200, show_spinner=False)
+def fetch_ebird_notable_nearby(latitude: float, longitude: float, ebird_api_key: str) -> list:
+    """查询 eBird 附近稀有鸟种观测记录（覆盖约 150km 范围）。缓存 2 小时。
+
+    eBird API 最大半径 50km，通过中心点 + 4 个偏移点（东南西北各 1°≈100km）
+    共 5 次查询合并去重，覆盖约 150km 范围（约 2 小时车程）。
+    """
+    if not ebird_api_key:
+        return []
+
+    # 5 个查询点：中心 + 东南西北偏移约 1°（≈100km）
+    query_points = [
+        (latitude, longitude),
+        (latitude + 1.0, longitude),
+        (latitude - 1.0, longitude),
+        (latitude, longitude + 1.0),
+        (latitude, longitude - 1.0),
+    ]
+
+    all_observations = {}
+    for lat, lng in query_points:
+        try:
+            url = (
+                f"https://api.ebird.org/v2/data/obs/geo/recent/notable?"
+                f"lat={lat:.4f}&lng={lng:.4f}&dist=50&back=7"
+            )
+            request = urllib.request.Request(url, headers={
+                "X-eBirdApiToken": ebird_api_key,
+                "User-Agent": "BirdPhotoApp/1.0",
+            })
+            with urllib.request.urlopen(request, timeout=15) as response:
+                data = json.loads(response.read().decode("utf-8"))
+                for obs in data:
+                    species_code = obs.get("speciesCode", "")
+                    if species_code and species_code not in all_observations:
+                        all_observations[species_code] = {
+                            "species_code": species_code,
+                            "common_name": obs.get("comName", ""),
+                            "scientific_name": obs.get("sciName", ""),
+                            "location": obs.get("locName", ""),
+                            "observation_date": obs.get("obsDt", ""),
+                            "how_many": obs.get("howMany", 1),
+                            "latitude": obs.get("lat", lat),
+                            "longitude": obs.get("lng", lng),
+                        }
+        except Exception as exc:
+            print(f"[eBird] 查询点 ({lat:.2f}, {lng:.2f}) 失败: {exc}")
+            continue
+
+    return list(all_observations.values())
+
+
+@st.cache_data(ttl=7200, show_spinner=False)
+def translate_ebird_species(species_list: list, api_key: str) -> dict:
+    """用 AI 将 eBird 英文鸟名批量翻译为中文名。缓存 2 小时。
+
+    返回 {english_name: chinese_name} 映射。
+    """
+    if not species_list or not api_key:
+        return {}
+
+    english_names = [s.get("common_name", "") for s in species_list if s.get("common_name")]
+    if not english_names:
+        return {}
+
+    # 每次最多翻译 30 个
+    names_to_translate = english_names[:30]
+    names_str = "\n".join(f"- {name}" for name in names_to_translate)
+
+    try:
+        client = OpenAI(
+            api_key=api_key,
+            base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+        )
+        response = client.chat.completions.create(
+            model="qwen-plus",
+            temperature=0.1,
+            messages=[
+                {
+                    "role": "system",
+                    "content": "你是一位鸟类学专家，精通中英文鸟类名称对照。请将英文鸟名翻译为标准中文名。",
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        "请将以下英文鸟名翻译为中文名，只返回 JSON 对象：\n"
+                        f"{names_str}\n\n"
+                        '格式：{"English Name": "中文名", ...}\n'
+                        "要求使用《中国鸟类分类与分布名录》中的标准中文名。"
+                    ),
+                },
+            ],
+        )
+        result_text = response.choices[0].message.content.strip()
+        json_match = re.search(r'\{.*\}', result_text, re.DOTALL)
+        if json_match:
+            return json.loads(json_match.group())
+    except Exception as exc:
+        print(f"[翻译] 鸟名翻译失败: {exc}")
+    return {}
+
+
+def build_birding_recommendations(notable_species: list, user_species_set: set,
+                                  name_translations: dict) -> list:
+    """构建个性化观鸟推荐列表。
+
+    将 eBird 稀有鸟种与用户已拍鸟种对比，标注是否为新种。
+    返回按推荐优先级排序的列表。
+    """
+    recommendations = []
+    for species in notable_species:
+        english_name = species.get("common_name", "")
+        chinese_name = name_translations.get(english_name, "")
+        is_new_species = True
+        if chinese_name and chinese_name in user_species_set:
+            is_new_species = False
+        elif english_name and english_name in user_species_set:
+            is_new_species = False
+
+        recommendations.append({
+            "english_name": english_name,
+            "chinese_name": chinese_name or english_name,
+            "scientific_name": species.get("scientific_name", ""),
+            "location": species.get("location", ""),
+            "observation_date": species.get("observation_date", ""),
+            "how_many": species.get("how_many", 1),
+            "is_new_species": is_new_species,
+            "latitude": species.get("latitude", 0),
+            "longitude": species.get("longitude", 0),
+        })
+
+    # 新种优先排序
+    recommendations.sort(key=lambda x: (not x["is_new_species"], x["chinese_name"]))
+    return recommendations
+
+
 def crop_to_bird(img: "Image.Image", bbox: list, padding_ratio: float = 0.15) -> "Image.Image":
     """根据 AI 返回的百分比 bounding box 裁剪图片，聚焦到鸟的区域。
 
@@ -1980,6 +2186,118 @@ with hero_right:
                 )
             else:
                 st.caption("正在加载推荐…")
+
+        # ============================================================
+        # 观鸟出行推荐（eBird 稀有鸟种 + 天气 + 个性化）
+        # ============================================================
+        ebird_api_key = ""
+        try:
+            ebird_api_key = st.secrets.get("EBIRD_API_KEY", "")
+        except (KeyError, FileNotFoundError):
+            pass
+
+        if ebird_api_key:
+            with st.expander("🔭 附近稀有鸟种 · 出行推荐", expanded=False):
+                birding_city = st.text_input(
+                    "你的位置",
+                    value=st.session_state.get("user_city", "杭州"),
+                    key="birding_city_input",
+                    placeholder="输入城市名，如：杭州、北京",
+                    label_visibility="collapsed",
+                )
+                if birding_city:
+                    st.session_state["user_city"] = birding_city
+
+                # 地理编码
+                birding_lat, birding_lon = geocode_city(birding_city or "杭州")
+
+                if birding_lat and birding_lon:
+                    # 并行获取天气和 eBird 数据
+                    weather = fetch_current_weather(birding_lat, birding_lon)
+                    notable_species = fetch_ebird_notable_nearby(birding_lat, birding_lon, ebird_api_key)
+
+                    # 天气卡片
+                    if weather:
+                        st.markdown(
+                            f'<div style="background:rgba(102,126,234,0.08); padding:10px 14px; '
+                            f'border-radius:12px; margin-bottom:8px;">'
+                            f'<span style="font-size:13px;">'
+                            f'{weather.get("emoji", "🌡️")} <b>{weather.get("description", "")}</b> '
+                            f'{weather.get("temperature", 0)}°C · 风速 {weather.get("windspeed", 0)}km/h'
+                            f'</span><br>'
+                            f'<span style="font-size:12px; color:#86868b;">'
+                            f'观鸟适宜度：{weather.get("birding_emoji", "")} {weather.get("birding_score", "")}'
+                            f'</span></div>',
+                            unsafe_allow_html=True,
+                        )
+
+                    if notable_species:
+                        # 翻译英文鸟名为中文
+                        name_translations = translate_ebird_species(notable_species, api_key)
+
+                        # 获取用户已拍鸟种
+                        user_species_set = set()
+                        if supabase_client and st.session_state.get("user_nickname"):
+                            user_history = fetch_user_history(
+                                supabase_client, st.session_state["user_nickname"]
+                            )
+                            user_species_set = set(
+                                r.get("chinese_name", "") for r in user_history
+                                if r.get("chinese_name")
+                            )
+
+                        # 构建个性化推荐
+                        recommendations = build_birding_recommendations(
+                            notable_species, user_species_set, name_translations
+                        )
+
+                        # 统计
+                        new_count = sum(1 for r in recommendations if r["is_new_species"])
+                        total_count = len(recommendations)
+
+                        st.markdown(
+                            f'<p style="font-size:12px; color:#86868b; margin:4px 0 8px;">'
+                            f'📍 {birding_city}周边 150km · 近 7 天发现 <b style="color:#1d1d1f;">'
+                            f'{total_count}</b> 种稀有鸟种'
+                            f'{"，其中 <b style=color:#667eea;>" + str(new_count) + "</b> 种你还没拍过 🎯" if new_count > 0 else ""}'
+                            f'</p>',
+                            unsafe_allow_html=True,
+                        )
+
+                        # 推荐列表
+                        for bird in recommendations[:15]:
+                            new_badge = (
+                                '<span style="background:#667eea; color:#fff; font-size:10px; '
+                                'padding:1px 6px; border-radius:6px; margin-left:6px;">新种</span>'
+                                if bird["is_new_species"] else ""
+                            )
+                            date_str = bird.get("observation_date", "")[:10]
+                            how_many = bird.get("how_many", 1)
+                            count_str = f"{how_many}只" if how_many and how_many > 1 else ""
+
+                            st.markdown(
+                                f'<div style="display:flex; align-items:flex-start; gap:8px; '
+                                f'padding:8px 10px; background:rgba(0,0,0,0.02); '
+                                f'border-radius:10px; margin-bottom:4px;">'
+                                f'<span style="font-size:16px; flex-shrink:0;">🐦</span>'
+                                f'<div style="flex:1; min-width:0;">'
+                                f'<div style="font-size:13px; font-weight:600; color:#1d1d1f;">'
+                                f'{bird["chinese_name"]}{new_badge}</div>'
+                                f'<div style="font-size:11px; color:#86868b; margin-top:2px;">'
+                                f'{bird.get("english_name", "")}</div>'
+                                f'<div style="font-size:11px; color:#86868b; margin-top:1px;">'
+                                f'📍 {bird.get("location", "未知")} · {date_str}'
+                                f'{" · " + count_str if count_str else ""}</div>'
+                                f'</div></div>',
+                                unsafe_allow_html=True,
+                            )
+
+                        if total_count > 15:
+                            st.caption(f"还有 {total_count - 15} 种未显示…")
+                    else:
+                        st.info("🔍 近 7 天该区域暂无稀有鸟种记录，试试换个城市？")
+                else:
+                    st.warning("⚠️ 无法识别该城市，请输入更具体的地名")
 
         # 上传区域（紧跟在登录下方）
         st.markdown(
