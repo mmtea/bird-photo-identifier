@@ -1448,7 +1448,6 @@ def translate_ebird_species(species_list: list, api_key: str) -> dict:
         print(f"[翻译] 鸟名翻译失败: {exc}")
     return {}
 
-
 def build_birding_recommendations(notable_species: list, user_species_set: set,
                                   name_translations: dict) -> list:
     """构建个性化观鸟推荐列表。
@@ -1465,11 +1464,16 @@ def build_birding_recommendations(notable_species: list, user_species_set: set,
             is_new_species = False
         elif english_name and english_name in user_species_set:
             is_new_species = False
+        # 同时检查学名（eBird CSV 导出中包含学名）
+        scientific_name = species.get("scientific_name", "")
+        if scientific_name and scientific_name in user_species_set:
+            is_new_species = False
 
         recommendations.append({
+            "species_code": species.get("species_code", ""),
             "english_name": english_name,
             "chinese_name": chinese_name or english_name,
-            "scientific_name": species.get("scientific_name", ""),
+            "scientific_name": scientific_name,
             "location": species.get("location", ""),
             "observation_date": species.get("observation_date", ""),
             "how_many": species.get("how_many", 1),
@@ -1482,6 +1486,104 @@ def build_birding_recommendations(notable_species: list, user_species_set: set,
     recommendations.sort(key=lambda x: (not x["is_new_species"], x["chinese_name"]))
     return recommendations
 
+@st.cache_data(ttl=86400, show_spinner=False)
+def fetch_species_photo_urls(species_codes: tuple) -> dict:
+    """批量获取鸟种照片 URL（通过 Macaulay Library API）。缓存 24 小时。
+
+    返回 {species_code: photo_url} 映射。
+    """
+    photo_map = {}
+    if not species_codes:
+        return photo_map
+
+    def _fetch_single_photo(species_code: str) -> tuple:
+        try:
+            url = (
+                f"https://search.macaulaylibrary.org/api/v1/search?"
+                f"taxonCode={species_code}&mediaType=photo"
+                f"&sort=rating_rank_desc&count=1"
+            )
+            request = urllib.request.Request(url, headers={
+                "User-Agent": "BirdPhotoApp/1.0",
+            })
+            with urllib.request.urlopen(request, timeout=10) as response:
+                data = json.loads(response.read().decode("utf-8"))
+                results = data.get("results", {}).get("content", [])
+                if results:
+                    asset_id = results[0].get("assetId", "")
+                    if asset_id:
+                        photo_url = f"https://cdn.download.ams.birds.cornell.edu/api/v1/asset/{asset_id}/480"
+                        return (species_code, photo_url)
+        except Exception as exc:
+            print(f"[照片] 获取 {species_code} 照片失败: {exc}")
+        return (species_code, "")
+
+    # 并行获取，最多 15 个（避免请求过多）
+    codes_to_fetch = list(species_codes)[:15]
+    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+        futures = [executor.submit(_fetch_single_photo, code) for code in codes_to_fetch]
+        for future in concurrent.futures.as_completed(futures):
+            code, url = future.result()
+            if url:
+                photo_map[code] = url
+
+    return photo_map
+
+def parse_ebird_csv_species(csv_content: str) -> set:
+    """解析 eBird 导出的 CSV 文件，提取所有鸟种的英文名和学名。
+
+    eBird CSV 格式：第一列通常是 "Species"（或 "Common Name"），
+    还有 "Scientific Name" 列。
+    返回包含英文名和学名的集合，用于与推荐列表对比。
+    """
+    species_set = set()
+    if not csv_content:
+        return species_set
+
+    lines = csv_content.strip().split("\n")
+    if not lines:
+        return species_set
+
+    # 解析表头，找到物种名称列
+    header = lines[0]
+    # 尝试用逗号分隔
+    separator = ","
+    if "\t" in header:
+        separator = "\t"
+
+    columns = header.split(separator)
+    # 清理引号
+    columns = [col.strip().strip('"').strip("'") for col in columns]
+
+    species_col_index = -1
+    scientific_col_index = -1
+    for idx, col in enumerate(columns):
+        col_lower = col.lower()
+        if col_lower in ("species", "common name", "common_name", "comname"):
+            species_col_index = idx
+        elif col_lower in ("scientific name", "scientific_name", "sciname"):
+            scientific_col_index = idx
+
+    # 如果找不到标准列名，假设第一列是物种名
+    if species_col_index == -1:
+        species_col_index = 0
+
+    for line in lines[1:]:
+        if not line.strip():
+            continue
+        parts = line.split(separator)
+        parts = [p.strip().strip('"').strip("'") for p in parts]
+
+        if species_col_index < len(parts):
+            name = parts[species_col_index].strip()
+            if name and name.lower() not in ("species", "common name", ""):
+                species_set.add(name)
+        if scientific_col_index >= 0 and scientific_col_index < len(parts):
+            sci_name = parts[scientific_col_index].strip()
+            if sci_name and sci_name.lower() not in ("scientific name", ""):
+                species_set.add(sci_name)
+
+    return species_set
 
 def crop_to_bird(img: "Image.Image", bbox: list, padding_ratio: float = 0.15) -> "Image.Image":
     """根据 AI 返回的百分比 bounding box 裁剪图片，聚焦到鸟的区域。
@@ -2208,6 +2310,37 @@ with hero_right:
                 if birding_city:
                     st.session_state["user_city"] = birding_city
 
+                # eBird 生命列表上传（个性化对比数据源）
+                st.markdown(
+                    '<p style="font-size:11px; color:#86868b; margin:4px 0 2px;">'
+                    '📋 上传你的 eBird 生命列表 CSV，获得更精准的个性化推荐'
+                    '</p>',
+                    unsafe_allow_html=True,
+                )
+                ebird_csv_help_url = "https://ebird.org/downloadMyData"
+                st.markdown(
+                    f'<p style="font-size:10px; color:#aaa; margin:0 0 6px;">'
+                    f'在 <a href="{ebird_csv_help_url}" target="_blank" '
+                    f'style="color:#667eea;">eBird 数据下载页</a> 点击 "Download My Data" 即可导出</p>',
+                    unsafe_allow_html=True,
+                )
+                ebird_csv_file = st.file_uploader(
+                    "上传 eBird CSV",
+                    type=["csv"],
+                    key="ebird_csv_uploader",
+                    label_visibility="collapsed",
+                )
+                ebird_species_set = set()
+                if ebird_csv_file:
+                    csv_content = ebird_csv_file.getvalue().decode("utf-8", errors="ignore")
+                    ebird_species_set = parse_ebird_csv_species(csv_content)
+                    if ebird_species_set:
+                        st.markdown(
+                            f'<p style="font-size:11px; color:#34c759; margin:2px 0 6px;">'
+                            f'✅ 已导入 eBird 生命列表，共 <b>{len(ebird_species_set)}</b> 个鸟种</p>',
+                            unsafe_allow_html=True,
+                        )
+
                 # 地理编码
                 birding_lat, birding_lon = geocode_city(birding_city or "杭州")
 
@@ -2235,7 +2368,7 @@ with hero_right:
                         # 翻译英文鸟名为中文
                         name_translations = translate_ebird_species(notable_species, api_key)
 
-                        # 获取用户已拍鸟种
+                        # 获取用户已拍鸟种（合并影禽记录 + eBird CSV）
                         user_species_set = set()
                         if supabase_client and st.session_state.get("user_nickname"):
                             user_history = fetch_user_history(
@@ -2245,11 +2378,21 @@ with hero_right:
                                 r.get("chinese_name", "") for r in user_history
                                 if r.get("chinese_name")
                             )
+                        # 合并 eBird CSV 中的鸟种（英文名 + 学名）
+                        if ebird_species_set:
+                            user_species_set = user_species_set | ebird_species_set
 
                         # 构建个性化推荐
                         recommendations = build_birding_recommendations(
                             notable_species, user_species_set, name_translations
                         )
+
+                        # 获取鸟种照片
+                        species_codes_for_photos = tuple(
+                            bird["species_code"] for bird in recommendations[:15]
+                            if bird.get("species_code")
+                        )
+                        photo_urls = fetch_species_photo_urls(species_codes_for_photos)
 
                         # 统计
                         new_count = sum(1 for r in recommendations if r["is_new_species"])
@@ -2264,7 +2407,7 @@ with hero_right:
                             unsafe_allow_html=True,
                         )
 
-                        # 推荐列表
+                        # 推荐列表（带照片卡片）
                         for bird in recommendations[:15]:
                             new_badge = (
                                 '<span style="background:#667eea; color:#fff; font-size:10px; '
@@ -2275,16 +2418,39 @@ with hero_right:
                             how_many = bird.get("how_many", 1)
                             count_str = f"{how_many}只" if how_many and how_many > 1 else ""
 
+                            bird_photo_url = photo_urls.get(bird.get("species_code", ""), "")
+                            photo_html = ""
+                            if bird_photo_url:
+                                photo_html = (
+                                    f'<img src="{bird_photo_url}" '
+                                    f'style="width:56px; height:56px; border-radius:10px; '
+                                    f'object-fit:cover; flex-shrink:0;" '
+                                    f'onerror="this.style.display=\'none\'" />'
+                                )
+                            else:
+                                photo_html = (
+                                    '<div style="width:56px; height:56px; border-radius:10px; '
+                                    'background:linear-gradient(135deg,#667eea,#764ba2); '
+                                    'display:flex; align-items:center; justify-content:center; '
+                                    'flex-shrink:0;">'
+                                    '<span style="font-size:24px;">🐦</span></div>'
+                                )
+
+                            ebird_species_url = f"https://ebird.org/species/{bird.get('species_code', '')}"
+
                             st.markdown(
-                                f'<div style="display:flex; align-items:flex-start; gap:8px; '
-                                f'padding:8px 10px; background:rgba(0,0,0,0.02); '
-                                f'border-radius:10px; margin-bottom:4px;">'
-                                f'<span style="font-size:16px; flex-shrink:0;">🐦</span>'
+                                f'<div style="display:flex; align-items:flex-start; gap:10px; '
+                                f'padding:10px 12px; background:rgba(0,0,0,0.02); '
+                                f'border-radius:12px; margin-bottom:6px;">'
+                                f'{photo_html}'
                                 f'<div style="flex:1; min-width:0;">'
                                 f'<div style="font-size:13px; font-weight:600; color:#1d1d1f;">'
-                                f'{bird["chinese_name"]}{new_badge}</div>'
+                                f'<a href="{ebird_species_url}" target="_blank" '
+                                f'style="color:#1d1d1f; text-decoration:none;">'
+                                f'{bird["chinese_name"]}</a>{new_badge}</div>'
                                 f'<div style="font-size:11px; color:#86868b; margin-top:2px;">'
-                                f'{bird.get("english_name", "")}</div>'
+                                f'{bird.get("english_name", "")} · '
+                                f'<i>{bird.get("scientific_name", "")}</i></div>'
                                 f'<div style="font-size:11px; color:#86868b; margin-top:1px;">'
                                 f'📍 {bird.get("location", "未知")} · {date_str}'
                                 f'{" · " + count_str if count_str else ""}</div>'
