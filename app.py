@@ -108,7 +108,7 @@ st.markdown("""
         padding-top: 1rem !important;
     }
 
-    /* 主标题区域 */
+    /* 主标题区域 — 突出到左边缘 */
     .hero-section {
         padding: 16px 20px;
         position: relative;
@@ -116,6 +116,7 @@ st.markdown("""
         border-radius: 16px;
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         margin-bottom: 4px;
+        margin-left: -1rem;
         box-shadow: 0 4px 20px rgba(102, 126, 234, 0.25);
     }
     .hero-icon {
@@ -531,16 +532,24 @@ st.markdown("""
         text-decoration: none;
     }
 
-    /* 区块容器 — 统一卡片风格 */
+    /* 内容区整体左缩进，标题区块突出 */
+    .block-container {
+        padding-left: 2rem !important;
+        padding-right: 1rem !important;
+    }
+
+    /* 区块容器 — 统一卡片风格，突出到左边缘 */
     .section-block {
         background: rgba(255, 255, 255, 0.82);
         backdrop-filter: blur(20px) saturate(180%);
         -webkit-backdrop-filter: blur(20px) saturate(180%);
         border: 1px solid rgba(0, 0, 0, 0.06);
         border-radius: 20px;
-        padding: 20px 20px 16px;
-        margin-top: 16px;
-        margin-bottom: 4px;
+        padding: 16px 20px 12px;
+        margin-top: 20px;
+        margin-bottom: 8px;
+        margin-left: -1rem;
+        margin-right: 0;
         box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
     }
 
