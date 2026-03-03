@@ -1408,13 +1408,22 @@ def translate_ebird_species(species_list: list, api_key: str) -> dict:
     if not species_list or not api_key:
         return {}
 
-    english_names = [s.get("common_name", "") for s in species_list if s.get("common_name")]
-    if not english_names:
+    # 构建 "英文名 (学名)" 列表，学名辅助提高翻译准确率
+    name_pairs = []
+    for species in species_list:
+        common = species.get("common_name", "")
+        scientific = species.get("scientific_name", "")
+        if common:
+            name_pairs.append((common, scientific))
+    if not name_pairs:
         return {}
 
     # 每次最多翻译 30 个
-    names_to_translate = english_names[:30]
-    names_str = "\n".join(f"- {name}" for name in names_to_translate)
+    pairs_to_translate = name_pairs[:30]
+    names_str = "\n".join(
+        f"- {common} ({scientific})" if scientific else f"- {common}"
+        for common, scientific in pairs_to_translate
+    )
 
     try:
         client = OpenAI(
@@ -1427,18 +1436,24 @@ def translate_ebird_species(species_list: list, api_key: str) -> dict:
             messages=[
                 {
                     "role": "system",
-                    "content": "你是一位鸟类学专家，精通中英文鸟类名称对照。请将英文鸟名翻译为中文俗名（常用名）。",
+                    "content": (
+                        "你是一位资深鸟类学专家，精通 eBird/IOC 英文鸟名与中国鸟类中文名的对照关系。"
+                        "你必须根据学名（拉丁名）来确定正确的中文名，而不是直译英文名。"
+                    ),
                 },
                 {
                     "role": "user",
                     "content": (
-                        "请将以下英文鸟名翻译为中文俗名（常用名），只返回 JSON 对象：\n"
+                        "请将以下 eBird 英文鸟名翻译为中国鸟类学界使用的标准中文名，只返回 JSON 对象：\n"
                         f"{names_str}\n\n"
-                        '格式：{"English Name": "中文俗名", ...}\n'
-                        "要求：\n"
-                        "1. 使用中国观鸟爱好者最常用的中文俗名，而非拉丁学名的直译\n"
-                        "2. 例如 Barn Swallow → 家燕，Eurasian Magpie → 喜鹊\n"
-                        "3. 如果是中国不常见的鸟种，使用最通行的中文译名"
+                        '格式：{"English Name": "中文名", ...}（key 只用英文名，不含学名）\n'
+                        "关键要求：\n"
+                        "1. 必须根据学名（拉丁名）查找对应的中文名，不要直译英文名\n"
+                        "2. 例如：Garganey (Spatula querquedula) → 白眉鸭（不是蓝翅鸭）\n"
+                        "3. 例如：Blue-winged Teal (Spatula discors) → 蓝翅鸭\n"
+                        "4. 例如：Barn Swallow (Hirundo rustica) → 家燕\n"
+                        "5. 例如：Eurasian Magpie (Pica pica) → 喜鹊\n"
+                        "6. 使用《中国鸟类分类与分布名录》或中国观鸟爱好者最常用的中文名"
                     ),
                 },
             ],
