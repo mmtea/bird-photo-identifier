@@ -108,7 +108,7 @@ st.markdown("""
         padding-top: 1rem !important;
     }
 
-    /* 主标题区域 — 突出到左边缘 */
+    /* 主标题区域 — 左右突出到边缘 */
     .hero-section {
         padding: 16px 20px;
         position: relative;
@@ -117,6 +117,7 @@ st.markdown("""
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         margin-bottom: 4px;
         margin-left: -1rem;
+        margin-right: -1rem;
         box-shadow: 0 4px 20px rgba(102, 126, 234, 0.25);
     }
     .hero-icon {
@@ -532,15 +533,20 @@ st.markdown("""
         text-decoration: none;
     }
 
-    /* 内容区整体左缩进，标题区块突出 */
-    .block-container {
-        padding-left: 2rem !important;
-        padding-right: 1rem !important;
+    /* 页面背景 — 淡灰蓝底色，衬托白色卡片 */
+    .stApp {
+        background: linear-gradient(180deg, #f0f2f5 0%, #e8ecf1 100%) !important;
     }
 
-    /* 区块容器 — 统一卡片风格，突出到左边缘 */
+    /* 内容区左右对称缩进，标题区块突出 */
+    .block-container {
+        padding-left: 2rem !important;
+        padding-right: 2rem !important;
+    }
+
+    /* 区块容器 — 统一卡片风格，左右突出到边缘 */
     .section-block {
-        background: rgba(255, 255, 255, 0.82);
+        background: rgba(255, 255, 255, 0.92);
         backdrop-filter: blur(20px) saturate(180%);
         -webkit-backdrop-filter: blur(20px) saturate(180%);
         border: 1px solid rgba(0, 0, 0, 0.06);
@@ -549,7 +555,7 @@ st.markdown("""
         margin-top: 20px;
         margin-bottom: 8px;
         margin-left: -1rem;
-        margin-right: 0;
+        margin-right: -1rem;
         box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
     }
 
