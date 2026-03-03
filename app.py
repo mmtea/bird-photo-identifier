@@ -1978,8 +1978,8 @@ def save_record_to_db(supabase_client, user_nickname: str, result: dict,
 
 
 @st.cache_data(ttl=30, show_spinner=False)
-def fetch_user_history(_supabase_client, user_nickname: str, limit: int = 50) -> list:
-    """查询用户的历史识别记录（缓存 30 秒）"""
+def fetch_user_history(_supabase_client, user_nickname: str, limit: int = 1000) -> list:
+    """查询用户的历史识别记录（缓存 30 秒）。limit 默认 1000 以容纳导入记录。"""
     if not _supabase_client:
         return []
     try:
