@@ -1455,10 +1455,10 @@ def fetch_ebird_notable_nearby(latitude: float, longitude: float, ebird_api_key:
 
 @st.cache_data(ttl=7200, show_spinner=False)
 def translate_ebird_species(species_list: list, ebird_api_key: str,
-                            _cache_version: int = 2) -> dict:
-    """通过 eBird taxonomy API 获取鸟种的官方中文名。缓存 2 小时。
+                            _cache_version: int = 3) -> dict:
+    """通过 eBird taxonomy API 获取鸟种的官方简体中文名。缓存 2 小时。
 
-    使用 locale=zh 参数直接从 eBird 获取中文名，比 AI 翻译更准确可靠。
+    使用 locale=zh_SIM 参数直接从 eBird 获取简体中文名，比 AI 翻译更准确可靠。
     返回 {english_name: chinese_name} 映射。
     _cache_version: 缓存版本号，修改此值可强制刷新旧缓存。
     """
@@ -1481,7 +1481,7 @@ def translate_ebird_species(species_list: list, ebird_api_key: str,
     try:
         url = (
             f"https://api.ebird.org/v2/ref/taxonomy/ebird?"
-            f"species={species_codes}&locale=zh&fmt=json"
+            f"species={species_codes}&locale=zh_SIM&fmt=json"
         )
         request = urllib.request.Request(url, headers={
             "X-eBirdApiToken": ebird_api_key,
