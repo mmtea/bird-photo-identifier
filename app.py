@@ -2906,6 +2906,47 @@ if user_nickname:
                 f'<b style="color:#1d1d1f;">{len(uploaded_files)}</b> 张照片</p>',
                 unsafe_allow_html=True,
             )
+        else:
+            # 未上传时显示示范图片，与右栏高度对齐
+            st.markdown(
+                '<div style="display:flex;gap:8px;margin-top:8px;">'
+                '<div style="flex:1;background:linear-gradient(135deg,#e8f4fd,#d1ecf9);'
+                'border-radius:10px;padding:16px 8px;text-align:center;">'
+                '<div style="font-size:32px;">🦅</div>'
+                '<p style="font-size:10px;color:#667eea;margin:4px 0 0;font-weight:600;">猛禽</p>'
+                '</div>'
+                '<div style="flex:1;background:linear-gradient(135deg,#fef3e2,#fde8c8);'
+                'border-radius:10px;padding:16px 8px;text-align:center;">'
+                '<div style="font-size:32px;">🐦</div>'
+                '<p style="font-size:10px;color:#e67e22;margin:4px 0 0;font-weight:600;">雀形目</p>'
+                '</div>'
+                '<div style="flex:1;background:linear-gradient(135deg,#e8f8e8,#d4f0d4);'
+                'border-radius:10px;padding:16px 8px;text-align:center;">'
+                '<div style="font-size:32px;">🦆</div>'
+                '<p style="font-size:10px;color:#27ae60;margin:4px 0 0;font-weight:600;">水鸟</p>'
+                '</div>'
+                '</div>'
+                '<div style="display:flex;gap:8px;margin-top:6px;">'
+                '<div style="flex:1;background:linear-gradient(135deg,#f3e8fd,#e8d5f5);'
+                'border-radius:10px;padding:16px 8px;text-align:center;">'
+                '<div style="font-size:32px;">🦉</div>'
+                '<p style="font-size:10px;color:#8e44ad;margin:4px 0 0;font-weight:600;">鸮形目</p>'
+                '</div>'
+                '<div style="flex:1;background:linear-gradient(135deg,#fde8e8,#f5d4d4);'
+                'border-radius:10px;padding:16px 8px;text-align:center;">'
+                '<div style="font-size:32px;">🦜</div>'
+                '<p style="font-size:10px;color:#e74c3c;margin:4px 0 0;font-weight:600;">鹦形目</p>'
+                '</div>'
+                '<div style="flex:1;background:linear-gradient(135deg,#e8f0fd,#d4e4f5);'
+                'border-radius:10px;padding:16px 8px;text-align:center;">'
+                '<div style="font-size:32px;">🦩</div>'
+                '<p style="font-size:10px;color:#3498db;margin:4px 0 0;font-weight:600;">涉禽</p>'
+                '</div>'
+                '</div>'
+                '<p style="font-size:10px;color:#aaa;text-align:center;margin:6px 0 0;">'
+                '支持识别 1000+ 种鸟类 · AI 自动评分</p>',
+                unsafe_allow_html=True,
+            )
 
     with import_col:
         st.markdown(
