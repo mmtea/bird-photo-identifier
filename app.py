@@ -599,9 +599,9 @@ st.markdown("""
     /* 单个 Tab 按钮 */
     .stTabs [data-baseweb="tab"] {
         border-radius: 0;
-        padding: 12px 16px;
-        font-size: 14px;
-        font-weight: 500;
+        padding: 14px 18px;
+        font-size: 18px;
+        font-weight: 600;
         color: #666;
         border: none;
         background: transparent;
