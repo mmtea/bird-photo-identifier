@@ -2568,19 +2568,6 @@ tab_explore, tab_upload, tab_gallery, tab_history, tab_rank = st.tabs(
 # ---- Tab 1: 附近推荐 ----
 with tab_explore:
     if supabase_client and user_nickname and ebird_api_key:
-        st.markdown(
-            '<div class="section-block" data-section="explore">'
-            '<div class="section-header">'
-            '<div class="section-icon section-icon-explore">🔭</div>'
-            '<div>'
-            '<p class="section-title">附近稀有鸟种 · 出行推荐</p>'
-            '<p class="section-subtitle">基于 eBird 数据，发现你周边的稀有鸟种</p>'
-            '</div>'
-            '<span class="section-toggle">▼</span>'
-            '</div></div>',
-            unsafe_allow_html=True,
-        )
-
         # 浏览器 Geolocation 自动定位（仅首次）
         if not st.session_state["geo_detected"]:
             geo_js = """
@@ -2850,19 +2837,6 @@ with tab_explore:
 # ---- Tab 2: 添加记录 ----
 with tab_upload:
     if user_nickname:
-        st.markdown(
-            '<div class="section-block" data-section="upload">'
-            '<div class="section-header">'
-            '<div class="section-icon section-icon-upload">📷</div>'
-            '<div>'
-            '<p class="section-title">添加鸟种记录</p>'
-            '<p class="section-subtitle">上传照片 AI 识别 · 导入 eBird/观鸟中心记录</p>'
-            '</div>'
-            '<span class="section-toggle">▼</span>'
-            '</div></div>',
-            unsafe_allow_html=True,
-        )
-
         upload_col, import_col = st.columns(2, gap="medium")
 
         with upload_col:
@@ -3539,18 +3513,6 @@ with tab_upload:
 # ---- Tab 3: 佳作榜 ----
 with tab_gallery:
     if supabase_client:
-        st.markdown(
-            '<div class="section-block" data-section="gallery">'
-            '<div class="section-header">'
-            '<div class="section-icon section-icon-gallery">📸</div>'
-            '<div>'
-            '<p class="section-title">佳作榜 · 社区精选</p>'
-            '<p class="section-subtitle">来自社区的优秀鸟类摄影作品</p>'
-            '</div>'
-            '<span class="section-toggle">▼</span>'
-            '</div></div>',
-            unsafe_allow_html=True,
-        )
         top_photos = fetch_top_photos(limit=20)
         if top_photos:
             # 分成两行显示
@@ -3632,19 +3594,6 @@ with tab_history:
                 st.toast("✅ 已删除", icon="✅")
             else:
                 st.toast("⚠️ 删除失败，请检查数据库权限", icon="⚠️")
-
-        # ---- 我的观鸟记录 ----
-        st.markdown(
-            '<div class="section-header">'
-            '<div class="section-icon section-icon-history">📚</div>'
-            '<div>'
-            '<p class="section-title">我的观鸟记录</p>'
-            '<p class="section-subtitle">你的观鸟历程和成就</p>'
-            '</div>'
-            '<span class="section-toggle">▼</span>'
-            '</div></div>',
-            unsafe_allow_html=True,
-        )
 
         history_records = fetch_user_history(supabase_client, user_nickname)
         user_stats = fetch_user_stats_from_records(history_records)
@@ -3810,19 +3759,6 @@ with tab_history:
 # ---- Tab 5: 排行榜 ----
 with tab_rank:
     if supabase_client:
-        st.markdown(
-            '<div class="section-block" data-section="rank" style="padding-bottom:0;">'
-            '<div class="section-header">'
-            '<div class="section-icon section-icon-rank">🏆</div>'
-            '<div>'
-            '<p class="section-title">观鸟排行榜</p>'
-            '<p class="section-subtitle">看看谁拍的鸟种最多</p>'
-            '</div>'
-            '<span class="section-toggle">▼</span>'
-            '</div></div>',
-            unsafe_allow_html=True,
-        )
-
         leaderboard = fetch_leaderboard()
         if leaderboard:
             items_html = ""
