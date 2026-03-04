@@ -2508,8 +2508,10 @@ def save_record_to_db(supabase_client, user_nickname: str, result: dict,
     data = json.dumps(record).encode("utf-8")
     req = urllib.request.Request(url, data=data, headers=headers, method="POST")
 
-    try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
+    def _do_post(payload):
+        post_data = json.dumps(payload).encode("utf-8")
+        post_req = urllib.request.Request(url, data=post_data, headers=headers, method="POST")
+        with urllib.request.urlopen(post_req, timeout=30) as resp:
             status_code = resp.status
             resp_body = resp.read().decode("utf-8", errors="replace")
             record_id = None
@@ -2521,14 +2523,27 @@ def save_record_to_db(supabase_client, user_nickname: str, result: dict,
                     record_id = resp_data.get("id")
             except (json.JSONDecodeError, ValueError):
                 pass
-            print(f"[Supabase] 保存成功: {user_nickname} - {result.get('chinese_name', '未知')} (HTTP {status_code}, id={record_id})")
-            return True, "", record_id
+            return status_code, record_id
+
+    try:
+        status_code, record_id = _do_post(record)
+        print(f"[Supabase] 保存成功: {user_nickname} - {result.get('chinese_name', '未知')} (HTTP {status_code}, id={record_id})")
+        return True, "", record_id
     except urllib.error.HTTPError as http_err:
         error_body = ""
         try:
             error_body = http_err.read().decode("utf-8")
         except Exception:
             pass
+        # 如果写入失败且包含 image_base64，可能是字段不存在，去掉后重试
+        if "image_base64" in record and record["image_base64"]:
+            try:
+                fallback_record = {k: v for k, v in record.items() if k != "image_base64"}
+                status_code, record_id = _do_post(fallback_record)
+                print(f"[Supabase] 降级保存成功(无image_base64): {user_nickname} (HTTP {status_code}, id={record_id})")
+                return True, "", record_id
+            except Exception:
+                pass
         msg = f"HTTP {http_err.code}: {error_body[:200]}"
         print(f"[Supabase] 保存失败: {msg}")
         return False, msg, None
@@ -2737,7 +2752,21 @@ def fetch_top_photos(limit: int = 10) -> list:
             f"&score=gt.0"
         )
         result = _supabase_request("GET", "bird_records", params=params)
-        return result if isinstance(result, list) else []
+        if isinstance(result, list):
+            return result
+        # 如果查询失败（可能 image_base64 字段不存在），降级查询不含该字段
+        params_fallback = (
+            f"select=id,user_nickname,chinese_name,english_name,score,"
+            f"thumbnail_base64,shoot_date,identification_basis,bird_description,"
+            f"score_sharpness,score_composition,score_lighting,"
+            f"score_background,score_pose,score_artistry,"
+            f"order_chinese,family_chinese"
+            f"&order=score.desc"
+            f"&limit={limit}"
+            f"&score=gt.0"
+        )
+        result_fallback = _supabase_request("GET", "bird_records", params=params_fallback)
+        return result_fallback if isinstance(result_fallback, list) else []
     except Exception:
         return []
 
@@ -3534,7 +3563,11 @@ with tab_upload:
                     if supabase_client and current_nickname and _sb_url and _sb_key:
                         _update_file_step(fname, "💾 保存识别记录…")
                         thumb_b64 = generate_thumbnail_base64(image_bytes, fname)
-                        full_img_b64 = generate_thumbnail_base64(image_bytes, fname, max_width=1200)
+                        # 生成大图 base64（1200px 宽），如果失败不影响上传
+                        try:
+                            full_img_b64 = generate_thumbnail_base64(image_bytes, fname, max_width=1200)
+                        except Exception:
+                            full_img_b64 = ""
                         db_saved, db_error, db_record_id = save_record_to_db(
                             supabase_client, current_nickname, result, thumb_b64,
                             image_b64=full_img_b64,
