@@ -2541,31 +2541,39 @@ else:
     if st.query_params.get("nick", "") != nickname_display:
         st.query_params["nick"] = nickname_display
 
-    # 已登录：一体化顶栏 — Logo 左 + 用户名右
-    st.markdown(
-        f'<div class="hero-section">'
-        f'<div style="display:flex;align-items:center;justify-content:space-between;">'
-        f'<div style="display:flex;align-items:center;gap:14px;">'
-        f'<span style="font-size:34px;">🦅</span>'
-        f'<div>'
-        f'<h1 style="font-size:24px;font-weight:700;margin:0;color:#fff;letter-spacing:-0.02em;">影禽</h1>'
-        f'<p style="font-size:12px;color:rgba(255,255,255,0.85);margin:2px 0 0;">BirdEye · 发现身边的鸟 · AI 识别与摄影评分</p>'
-        f'</div>'
-        f'</div>'
-        f'<div style="display:flex;align-items:center;gap:6px;">'
-        f'<span style="font-size:14px;">🐦</span>'
-        f'<span style="font-size:14px;font-weight:600;color:#fff;">{nickname_display}</span>'
-        f'</div>'
-        f'</div></div>',
-        unsafe_allow_html=True,
-    )
-    if st.button("切换账号", type="secondary", key="switch_user"):
-        st.session_state["user_nickname"] = ""
-        st.query_params.pop("nick", None)
-        st.session_state.pop("identified_cache", None)
-        st.session_state.pop("results_with_bytes", None)
-        st.session_state.pop("zip_bytes", None)
-        st.rerun()
+    # 已登录：一体化顶栏 — Logo 左 + 用户名右（含切换账号）
+    hero_col_left, hero_col_right = st.columns([5, 2])
+    with hero_col_left:
+        st.markdown(
+            '<div class="hero-section" style="border-radius:10px 0 0 0;margin-bottom:0;">'
+            '<div style="display:flex;align-items:center;gap:14px;">'
+            '<span style="font-size:34px;">🦅</span>'
+            '<div>'
+            '<h1 style="font-size:24px;font-weight:700;margin:0;color:#fff;letter-spacing:-0.02em;">影禽</h1>'
+            '<p style="font-size:12px;color:rgba(255,255,255,0.85);margin:2px 0 0;">BirdEye · 发现身边的鸟 · AI 识别与摄影评分</p>'
+            '</div>'
+            '</div></div>',
+            unsafe_allow_html=True,
+        )
+    with hero_col_right:
+        st.markdown(
+            f'<div style="background:linear-gradient(135deg,#1a3a5c 0%,#2d6a4f 100%);'
+            f'border-radius:0 10px 0 0;padding:14px 16px;margin-bottom:0;'
+            f'display:flex;flex-direction:column;align-items:flex-end;justify-content:center;height:100%;min-height:68px;">'
+            f'<div style="display:flex;align-items:center;gap:6px;">'
+            f'<span style="font-size:14px;">🐦</span>'
+            f'<span style="font-size:14px;font-weight:600;color:#fff;">{nickname_display}</span>'
+            f'</div>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+        if st.button("切换账号", type="secondary", use_container_width=True, key="switch_user"):
+            st.session_state["user_nickname"] = ""
+            st.query_params.pop("nick", None)
+            st.session_state.pop("identified_cache", None)
+            st.session_state.pop("results_with_bytes", None)
+            st.session_state.pop("zip_bytes", None)
+            st.rerun()
 
 user_nickname = st.session_state["user_nickname"]
 
