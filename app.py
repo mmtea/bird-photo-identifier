@@ -3951,163 +3951,75 @@ with tab_gallery:
     if supabase_client:
         top_photos = fetch_top_photos(limit=30)
         if top_photos:
-            # ---------- 详情展示区（选中某张佳作时显示） ----------
-            selected_gallery_index = st.session_state.get("selected_gallery_index", None)
-            if selected_gallery_index is not None and 0 <= selected_gallery_index < len(top_photos):
-                selected_photo = top_photos[selected_gallery_index]
-                sp_thumb = selected_photo.get("thumbnail_base64", "")
-                sp_name = selected_photo.get("chinese_name", "未知")
-                sp_en_name = selected_photo.get("english_name", "")
-                sp_score = selected_photo.get("score", 0)
-                sp_photographer = selected_photo.get("user_nickname", "匿名")
-                sp_date = selected_photo.get("shoot_date", "")
-                sp_basis = selected_photo.get("identification_basis", "")
-                sp_desc = selected_photo.get("bird_description", "")
-                sp_order = selected_photo.get("order_chinese", "")
-                sp_family = selected_photo.get("family_chinese", "")
-                sp_score_color = get_score_color(sp_score)
+            # ---------- 佳作榜：纯 HTML+JS，点击图片弹出 modal ----------
+            import json as _json
 
-                # 关闭按钮
-                if st.button("✕ 返回佳作榜", key="close_gallery_detail", use_container_width=True):
-                    st.session_state["selected_gallery_index"] = None
-                    st.rerun()
+            # 构建每张佳作的数据（供 JS modal 使用）
+            gallery_data_list = []
+            for photo in top_photos:
+                sp_score = photo.get("score", 0)
+                sp_date_raw = photo.get("shoot_date", "")
+                formatted_date = ""
+                if sp_date_raw and len(sp_date_raw) >= 8:
+                    formatted_date = f"{sp_date_raw[:4]}.{sp_date_raw[4:6]}.{sp_date_raw[6:8]}"
 
-                # 大图 + 详情双栏
-                detail_col_img, detail_col_info = st.columns([3, 2])
-                with detail_col_img:
-                    if sp_thumb:
-                        import base64 as _b64
-                        try:
-                            img_bytes = _b64.b64decode(sp_thumb)
-                            st.image(img_bytes, use_container_width=True)
-                        except Exception:
-                            st.markdown(
-                                f'<img src="data:image/jpeg;base64,{sp_thumb}" '
-                                f'style="width:100%;border-radius:10px;">',
-                                unsafe_allow_html=True,
-                            )
-                    else:
-                        st.markdown(
-                            '<div style="width:100%;height:300px;'
-                            'background:linear-gradient(135deg,#1a3a5c,#2d6a4f);'
-                            'border-radius:10px;display:flex;align-items:center;'
-                            'justify-content:center;font-size:60px;">📷</div>',
-                            unsafe_allow_html=True,
+                # 评分维度条 HTML
+                dimensions = [
+                    ("清晰", photo.get("score_sharpness", 0), 20),
+                    ("构图", photo.get("score_composition", 0), 20),
+                    ("光线", photo.get("score_lighting", 0), 20),
+                    ("背景", photo.get("score_background", 0), 15),
+                    ("姿态", photo.get("score_pose", 0), 15),
+                    ("艺术", photo.get("score_artistry", 0), 10),
+                ]
+                has_dims = any(d[1] > 0 for d in dimensions)
+                bars_html = ""
+                if has_dims:
+                    for dim_name, dim_score, dim_max in dimensions:
+                        pct = (dim_score / dim_max * 100) if dim_max > 0 else 0
+                        if pct >= 85:
+                            bar_c = "#2d6a4f"
+                        elif pct >= 70:
+                            bar_c = "#4a7c59"
+                        elif pct >= 50:
+                            bar_c = "#e8a317"
+                        else:
+                            bar_c = "#c0392b"
+                        bars_html += (
+                            f'<div style="display:flex;align-items:center;margin:3px 0;font-size:11px;">'
+                            f'<span style="width:28px;color:#888;font-weight:500;flex-shrink:0;">{dim_name}</span>'
+                            f'<div style="flex:1;height:6px;background:rgba(0,0,0,0.06);border-radius:3px;margin:0 4px;overflow:hidden;">'
+                            f'<div style="width:{pct:.0f}%;height:100%;background:{bar_c};border-radius:3px;"></div></div>'
+                            f'<span style="width:20px;text-align:right;color:#888;font-size:10px;">{dim_score}</span></div>'
                         )
 
-                with detail_col_info:
-                    # 鸟种名称
-                    st.markdown(
-                        f'<div style="font-size:22px;font-weight:700;color:#1a3a5c;">'
-                        f'{sp_name}</div>',
-                        unsafe_allow_html=True,
-                    )
-                    if sp_en_name:
-                        st.markdown(
-                            f'<p style="font-size:13px;color:#888;margin-top:2px;'
-                            f'font-style:italic;">{sp_en_name}</p>',
-                            unsafe_allow_html=True,
-                        )
+                gallery_data_list.append({
+                    "thumb": photo.get("thumbnail_base64", ""),
+                    "name": photo.get("chinese_name", "未知"),
+                    "enName": photo.get("english_name", ""),
+                    "score": sp_score,
+                    "scoreEmoji": get_score_emoji(sp_score),
+                    "scoreColor": get_score_color(sp_score),
+                    "photographer": photo.get("user_nickname", "匿名"),
+                    "date": formatted_date,
+                    "order": photo.get("order_chinese", ""),
+                    "family": photo.get("family_chinese", ""),
+                    "basis": photo.get("identification_basis", ""),
+                    "desc": photo.get("bird_description", ""),
+                    "barsHtml": bars_html,
+                })
 
-                    # 分类标签
-                    taxonomy_html = ""
-                    if sp_order:
-                        taxonomy_html += f'<span class="taxonomy-pill order-pill">{sp_order}</span> '
-                    if sp_family:
-                        taxonomy_html += f'<span class="taxonomy-pill family-pill">{sp_family}</span>'
-                    if taxonomy_html:
-                        st.markdown(taxonomy_html, unsafe_allow_html=True)
-
-                    # 评分
-                    st.markdown(
-                        f'<div style="margin-top:8px;">'
-                        f'<span class="score-pill score-{sp_score_color}" '
-                        f'style="font-size:14px;padding:4px 12px;">'
-                        f'{get_score_emoji(sp_score)} {sp_score}</span></div>',
-                        unsafe_allow_html=True,
-                    )
-
-                    # 摄影师 & 日期
-                    meta_parts = [f"📷 {sp_photographer}"]
-                    if sp_date and len(sp_date) >= 8:
-                        formatted_date = f"{sp_date[:4]}.{sp_date[4:6]}.{sp_date[6:8]}"
-                        meta_parts.append(f"📅 {formatted_date}")
-                    st.markdown(
-                        f'<div style="font-size:13px;color:#888;margin-top:8px;">'
-                        f'{" &nbsp;·&nbsp; ".join(meta_parts)}</div>',
-                        unsafe_allow_html=True,
-                    )
-
-                    # 识别依据
-                    if sp_basis:
-                        st.markdown(
-                            f'<div style="font-size:12px;color:#555;margin-top:10px;'
-                            f'padding:8px 10px;background:#f1f8e9;border-radius:6px;">'
-                            f'<b style="color:#4a7c59;">识别依据</b><br>{sp_basis}</div>',
-                            unsafe_allow_html=True,
-                        )
-
-                    # 评分维度条
-                    dimensions = [
-                        ("清晰", selected_photo.get("score_sharpness", 0), 20),
-                        ("构图", selected_photo.get("score_composition", 0), 20),
-                        ("光线", selected_photo.get("score_lighting", 0), 20),
-                        ("背景", selected_photo.get("score_background", 0), 15),
-                        ("姿态", selected_photo.get("score_pose", 0), 15),
-                        ("艺术", selected_photo.get("score_artistry", 0), 10),
-                    ]
-                    has_dimensions = any(d[1] > 0 for d in dimensions)
-                    if has_dimensions:
-                        bars_html = '<div style="margin-top:10px;">'
-                        for dim_name, dim_score, dim_max in dimensions:
-                            percentage = (dim_score / dim_max * 100) if dim_max > 0 else 0
-                            if percentage >= 85:
-                                bar_color = "#2d6a4f"
-                            elif percentage >= 70:
-                                bar_color = "#4a7c59"
-                            elif percentage >= 50:
-                                bar_color = "#e8a317"
-                            else:
-                                bar_color = "#c0392b"
-                            bars_html += (
-                                f'<div style="display:flex;align-items:center;margin:3px 0;font-size:11px;">'
-                                f'<span style="width:28px;color:#888;font-weight:500;flex-shrink:0;">{dim_name}</span>'
-                                f'<div style="flex:1;height:6px;background:rgba(0,0,0,0.06);border-radius:3px;margin:0 4px;overflow:hidden;">'
-                                f'<div style="width:{percentage}%;height:100%;background:{bar_color};border-radius:3px;"></div></div>'
-                                f'<span style="width:20px;text-align:right;color:#888;font-size:10px;">{dim_score}</span></div>'
-                            )
-                        bars_html += '</div>'
-                        st.markdown(bars_html, unsafe_allow_html=True)
-
-                # 鸟类介绍（大图下方全宽）
-                if sp_desc:
-                    st.markdown(
-                        f'<div style="font-size:13px;color:#3a3a3c;line-height:1.7;'
-                        f'margin-top:12px;padding:12px 14px;background:#fafafa;'
-                        f'border-radius:8px;border:1px solid #e8e8e8;">'
-                        f'<b style="color:#1a3a5c;">🐦 鸟类介绍</b><br>{sp_desc}</div>',
-                        unsafe_allow_html=True,
-                    )
-
-                st.markdown("---")
-
-            # ---------- 缩略图网格（CSS Grid 自适应） ----------
+            # 缩略图卡片 HTML（可点击）
             gallery_cards_html = ""
-            for photo_index, photo in enumerate(top_photos):
-                thumb_b64 = photo.get("thumbnail_base64", "")
-                photo_score = photo.get("score", 0)
-                score_color = get_score_color(photo_score)
-                bird_name = photo.get("chinese_name", "未知")
-                photographer = photo.get("user_nickname", "匿名")
-
-                if thumb_b64:
-                    img_html = (
-                        f'<img src="data:image/jpeg;base64,{thumb_b64}" '
+            for idx, gd in enumerate(gallery_data_list):
+                if gd["thumb"]:
+                    img_tag = (
+                        f'<img src="data:image/jpeg;base64,{gd["thumb"]}" '
                         f'style="width:100%;aspect-ratio:4/3;object-fit:cover;'
-                        f'border-radius:8px 8px 0 0;display:block;" loading="lazy" alt="{bird_name}">'
+                        f'border-radius:8px 8px 0 0;display:block;" loading="lazy" alt="{gd["name"]}">'
                     )
                 else:
-                    img_html = (
+                    img_tag = (
                         '<div style="width:100%;aspect-ratio:4/3;'
                         'background:linear-gradient(135deg,#1a3a5c,#2d6a4f);'
                         'border-radius:8px 8px 0 0;display:flex;'
@@ -4116,44 +4028,170 @@ with tab_gallery:
                     )
 
                 gallery_cards_html += (
-                    f'<div style="background:#fff;border-radius:8px;'
+                    f'<div class="gallery-card" onclick="openGalleryModal({idx})" '
+                    f'style="background:#fff;border-radius:8px;cursor:pointer;'
                     f'box-shadow:0 1px 4px rgba(0,0,0,0.06);overflow:hidden;'
-                    f'border:1px solid #e8e8e8;">'
-                    f'{img_html}'
-                    f'<div style="padding:6px 8px 4px;">'
+                    f'border:1px solid #e8e8e8;transition:transform 0.15s,box-shadow 0.15s;"'
+                    f' onmouseover="this.style.transform=\'translateY(-2px)\';this.style.boxShadow=\'0 4px 12px rgba(0,0,0,0.12)\'"'
+                    f' onmouseout="this.style.transform=\'none\';this.style.boxShadow=\'0 1px 4px rgba(0,0,0,0.06)\'">'
+                    f'{img_tag}'
+                    f'<div style="padding:6px 8px 6px;">'
                     f'<div style="font-size:12px;font-weight:600;color:#1a3a5c;'
                     f'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'
-                    f'{bird_name}</div>'
+                    f'{gd["name"]}</div>'
                     f'<div style="display:flex;align-items:center;justify-content:space-between;margin-top:2px;">'
-                    f'<span style="font-size:10px;color:#888;">{photographer}</span>'
-                    f'<span class="score-pill score-{score_color}" '
-                    f'style="font-size:9px;padding:1px 5px;">'
-                    f'{get_score_emoji(photo_score)} {photo_score}</span>'
+                    f'<span style="font-size:10px;color:#888;">{gd["photographer"]}</span>'
+                    f'<span style="font-size:9px;padding:1px 5px;border-radius:4px;'
+                    f'background:#e8f5e9;color:#2d6a4f;font-weight:600;">'
+                    f'{gd["scoreEmoji"]} {gd["score"]}</span>'
                     f'</div></div></div>'
                 )
 
-            st.markdown(
-                f'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));'
-                f'gap:10px;padding:4px 0 8px;">'
-                f'{gallery_cards_html}</div>',
-                unsafe_allow_html=True,
-            )
+            # 将详情数据序列化为 JS 变量（去掉 thumb 避免重复传输过大）
+            gallery_modal_data = []
+            for gd in gallery_data_list:
+                gallery_modal_data.append({
+                    "thumb": gd["thumb"][:50] + "..." if len(gd["thumb"]) > 50 else gd["thumb"],
+                    "name": gd["name"],
+                    "enName": gd["enName"],
+                    "score": gd["score"],
+                    "scoreEmoji": gd["scoreEmoji"],
+                    "scoreColor": gd["scoreColor"],
+                    "photographer": gd["photographer"],
+                    "date": gd["date"],
+                    "order": gd["order"],
+                    "family": gd["family"],
+                    "basis": gd["basis"],
+                    "desc": gd["desc"],
+                    "barsHtml": gd["barsHtml"],
+                })
 
-            # 用 Streamlit 按钮实现点击查看详情
-            gallery_btn_cols_per_row = 5
-            for row_start in range(0, len(top_photos), gallery_btn_cols_per_row):
-                row_photos = top_photos[row_start:row_start + gallery_btn_cols_per_row]
-                btn_cols = st.columns(gallery_btn_cols_per_row)
-                for col_idx, photo in enumerate(row_photos):
-                    photo_index = row_start + col_idx
-                    with btn_cols[col_idx]:
-                        if st.button(
-                            f"🔍 {photo.get('chinese_name', '未知')[:4]}",
-                            key=f"gallery_view_{photo_index}",
-                            use_container_width=True,
-                        ):
-                            st.session_state["selected_gallery_index"] = photo_index
-                            st.rerun()
+            # 完整 HTML：网格 + modal + JS
+            full_gallery_html = f'''
+            <style>
+            .gallery-modal-overlay {{
+                display:none; position:fixed; top:0; left:0; right:0; bottom:0;
+                background:rgba(0,0,0,0.6); z-index:10000;
+                justify-content:center; align-items:center; padding:16px;
+            }}
+            .gallery-modal-overlay.active {{ display:flex; }}
+            .gallery-modal {{
+                background:#fff; border-radius:12px; max-width:680px; width:100%;
+                max-height:90vh; overflow-y:auto; position:relative;
+                box-shadow:0 20px 60px rgba(0,0,0,0.3);
+                animation: modalIn 0.2s ease;
+            }}
+            @keyframes modalIn {{
+                from {{ opacity:0; transform:scale(0.95); }}
+                to {{ opacity:1; transform:scale(1); }}
+            }}
+            .gallery-modal-close {{
+                position:sticky; top:0; right:0; z-index:10;
+                display:flex; justify-content:flex-end; padding:8px 12px;
+                background:linear-gradient(180deg,rgba(255,255,255,0.95),rgba(255,255,255,0));
+            }}
+            .gallery-modal-close button {{
+                background:#f0f0f0; border:none; border-radius:50%;
+                width:32px; height:32px; font-size:18px; cursor:pointer;
+                color:#333; display:flex; align-items:center; justify-content:center;
+            }}
+            .gallery-modal-close button:hover {{ background:#e0e0e0; }}
+            .gallery-modal img.modal-main-img {{
+                width:100%; display:block; border-radius:0;
+            }}
+            .gallery-modal-info {{
+                padding:16px 20px 20px;
+            }}
+            @media screen and (max-width:480px) {{
+                .gallery-modal {{ border-radius:8px; max-height:85vh; }}
+                .gallery-modal-info {{ padding:12px 14px 16px; }}
+            }}
+            </style>
+
+            <!-- 缩略图网格 -->
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));
+                gap:10px;padding:4px 0 8px;">
+                {gallery_cards_html}
+            </div>
+
+            <!-- Modal 弹窗 -->
+            <div class="gallery-modal-overlay" id="galleryModalOverlay" onclick="closeGalleryModal(event)">
+                <div class="gallery-modal" id="galleryModal" onclick="event.stopPropagation()">
+                    <div class="gallery-modal-close">
+                        <button onclick="closeGalleryModal()">&times;</button>
+                    </div>
+                    <div id="galleryModalContent"></div>
+                </div>
+            </div>
+
+            <script>
+            var galleryThumbs = {_json.dumps([gd["thumb"] for gd in gallery_data_list])};
+            var galleryDetails = {_json.dumps(gallery_modal_data, ensure_ascii=False)};
+
+            function openGalleryModal(idx) {{
+                var overlay = document.getElementById('galleryModalOverlay');
+                var content = document.getElementById('galleryModalContent');
+                var d = galleryDetails[idx];
+                var thumbSrc = galleryThumbs[idx];
+
+                var imgHtml = thumbSrc
+                    ? '<img class="modal-main-img" src="data:image/jpeg;base64,' + thumbSrc + '" alt="' + d.name + '">'
+                    : '<div style="width:100%;height:300px;background:linear-gradient(135deg,#1a3a5c,#2d6a4f);display:flex;align-items:center;justify-content:center;font-size:60px;">📷</div>';
+
+                var taxonomyHtml = '';
+                if (d.order) taxonomyHtml += '<span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;background:#e8f5e9;color:#2d6a4f;margin-right:4px;">' + d.order + '</span>';
+                if (d.family) taxonomyHtml += '<span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;background:#fff3e0;color:#e8a317;">' + d.family + '</span>';
+
+                var metaParts = ['📷 ' + d.photographer];
+                if (d.date) metaParts.push('📅 ' + d.date);
+
+                var basisHtml = d.basis
+                    ? '<div style="font-size:12px;color:#555;margin-top:10px;padding:8px 10px;background:#f1f8e9;border-radius:6px;"><b style="color:#4a7c59;">识别依据</b><br>' + d.basis + '</div>'
+                    : '';
+
+                var descHtml = d.desc
+                    ? '<div style="font-size:13px;color:#3a3a3c;line-height:1.7;margin-top:10px;padding:10px 12px;background:#fafafa;border-radius:6px;border:1px solid #e8e8e8;"><b style="color:#1a3a5c;">🐦 鸟类介绍</b><br>' + d.desc + '</div>'
+                    : '';
+
+                var barsSection = d.barsHtml
+                    ? '<div style="margin-top:10px;">' + d.barsHtml + '</div>'
+                    : '';
+
+                content.innerHTML = imgHtml +
+                    '<div class="gallery-modal-info">' +
+                    '<div style="font-size:20px;font-weight:700;color:#1a3a5c;">' + d.name + '</div>' +
+                    (d.enName ? '<div style="font-size:13px;color:#888;font-style:italic;margin-top:2px;">' + d.enName + '</div>' : '') +
+                    (taxonomyHtml ? '<div style="margin-top:6px;">' + taxonomyHtml + '</div>' : '') +
+                    '<div style="margin-top:8px;"><span style="display:inline-block;padding:3px 10px;border-radius:4px;font-size:13px;font-weight:600;background:#e8f5e9;color:#2d6a4f;">' + d.scoreEmoji + ' ' + d.score + '</span></div>' +
+                    '<div style="font-size:13px;color:#888;margin-top:8px;">' + metaParts.join(' &nbsp;·&nbsp; ') + '</div>' +
+                    basisHtml + barsSection + descHtml +
+                    '</div>';
+
+                overlay.classList.add('active');
+                document.body.style.overflow = 'hidden';
+            }}
+
+            function closeGalleryModal(event) {{
+                if (event && event.target && event.target.id !== 'galleryModalOverlay') return;
+                var overlay = document.getElementById('galleryModalOverlay');
+                overlay.classList.remove('active');
+                document.body.style.overflow = '';
+            }}
+
+            // ESC 键关闭
+            document.addEventListener('keydown', function(e) {{
+                if (e.key === 'Escape') {{
+                    var overlay = document.getElementById('galleryModalOverlay');
+                    if (overlay && overlay.classList.contains('active')) {{
+                        overlay.classList.remove('active');
+                        document.body.style.overflow = '';
+                    }}
+                }}
+            }});
+            </script>
+            '''
+
+            st.markdown(full_gallery_html, unsafe_allow_html=True)
         else:
             st.markdown(
                 '<p style="text-align:center; color:#888; font-size:13px; padding:16px 0;">'
