@@ -545,8 +545,58 @@ st.markdown("""
         padding-right: 2rem !important;
     }
 
-
-        margin-bottom: 12px;
+    /* Tab 页签美化 — Apple 风格分段控件 */
+    .stTabs {
+        background: rgba(255, 255, 255, 0.92);
+        backdrop-filter: blur(20px) saturate(180%);
+        -webkit-backdrop-filter: blur(20px) saturate(180%);
+        border-radius: 16px;
+        padding: 4px 8px 0;
+        margin-left: -1rem;
+        margin-right: -1rem;
+        margin-top: 12px;
+        box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+        border: 1px solid rgba(0, 0, 0, 0.06);
+    }
+    /* Tab 按钮行 */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 0;
+        background: rgba(0, 0, 0, 0.03);
+        border-radius: 12px;
+        padding: 3px;
+    }
+    /* 单个 Tab 按钮 */
+    .stTabs [data-baseweb="tab"] {
+        border-radius: 10px;
+        padding: 8px 12px;
+        font-size: 13px;
+        font-weight: 600;
+        color: #86868b;
+        border: none;
+        background: transparent;
+        transition: all 0.2s ease;
+        white-space: nowrap;
+    }
+    .stTabs [data-baseweb="tab"]:hover {
+        color: #1d1d1f;
+        background: rgba(255, 255, 255, 0.6);
+    }
+    /* 选中的 Tab */
+    .stTabs [aria-selected="true"] {
+        background: #ffffff !important;
+        color: #667eea !important;
+        box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+    }
+    /* 隐藏默认下划线 */
+    .stTabs [data-baseweb="tab-highlight"] {
+        display: none;
+    }
+    .stTabs [data-baseweb="tab-border"] {
+        display: none;
+    }
+    /* Tab 内容区 */
+    .stTabs [data-baseweb="tab-panel"] {
+        padding: 16px 12px 12px;
     }
 
     /* PWA 安装提示横幅 */
