@@ -602,24 +602,13 @@ st.markdown("""
         box-sizing: border-box;
         overflow: visible !important;
     }
-    /* Tab 按钮行 — 滚动时固定在顶部 */
+    /* Tab 按钮行 */
     .stTabs [data-baseweb="tab-list"] {
         gap: 0;
         background: #fafafa;
         border-radius: 0;
         padding: 0 16px;
         border-bottom: 2px solid #e0e0e0;
-        position: sticky;
-        top: 0;
-        z-index: 999;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.08);
-    }
-    /* 确保 sticky 生效：所有父容器 overflow 不能是 hidden */
-    .stApp, .main, .block-container,
-    [data-testid="stAppViewContainer"],
-    [data-testid="stVerticalBlock"],
-    section.main > div {
-        overflow: visible !important;
     }
     /* 单个 Tab 按钮 */
     .stTabs [data-baseweb="tab"] {
@@ -983,6 +972,65 @@ components.html("""
         // 30秒后停止监控，避免性能影响
         setTimeout(function() { observer.disconnect(); }, 30000);
     } catch(e) {}
+
+    // ---- Tab 页签滚动时固定在顶部 ----
+    function setupStickyTabs() {
+        try {
+            var doc = window.parent.document || document;
+            var tabList = doc.querySelector('[data-baseweb="tab-list"]');
+            if (!tabList || tabList.dataset.stickyDone) return;
+            tabList.dataset.stickyDone = '1';
+
+            // 找到 Streamlit 的实际滚动容器
+            var scrollContainer = doc.querySelector('[data-testid="stAppViewContainer"]')
+                || doc.querySelector('.main')
+                || doc.querySelector('section.main > div');
+            if (!scrollContainer) {
+                // fallback: 找有滚动的容器
+                var candidates = doc.querySelectorAll('div, section');
+                for (var i = 0; i < candidates.length; i++) {
+                    var cs = window.top.getComputedStyle(candidates[i]);
+                    if ((cs.overflow === 'auto' || cs.overflow === 'scroll' ||
+                         cs.overflowY === 'auto' || cs.overflowY === 'scroll') &&
+                        candidates[i].scrollHeight > candidates[i].clientHeight) {
+                        scrollContainer = candidates[i];
+                        break;
+                    }
+                }
+            }
+            if (!scrollContainer) return;
+
+            var tabOriginalTop = tabList.getBoundingClientRect().top + scrollContainer.scrollTop;
+            var tabHeight = tabList.offsetHeight;
+            var placeholder = doc.createElement('div');
+            placeholder.style.display = 'none';
+            placeholder.style.height = tabHeight + 'px';
+            tabList.parentNode.insertBefore(placeholder, tabList);
+
+            scrollContainer.addEventListener('scroll', function() {
+                var scrollTop = scrollContainer.scrollTop;
+                if (scrollTop > tabOriginalTop) {
+                    tabList.style.position = 'fixed';
+                    tabList.style.top = '0';
+                    tabList.style.left = '0';
+                    tabList.style.right = '0';
+                    tabList.style.zIndex = '9998';
+                    tabList.style.boxShadow = '0 2px 8px rgba(0,0,0,0.12)';
+                    placeholder.style.display = 'block';
+                } else {
+                    tabList.style.position = '';
+                    tabList.style.top = '';
+                    tabList.style.left = '';
+                    tabList.style.right = '';
+                    tabList.style.zIndex = '';
+                    tabList.style.boxShadow = '';
+                    placeholder.style.display = 'none';
+                }
+            });
+        } catch(e) { console.warn('[StickyTab]', e); }
+    }
+    setTimeout(setupStickyTabs, 1500);
+    setTimeout(setupStickyTabs, 3000);
 })();
 </script>
 """, height=0, scrolling=False)
@@ -4043,52 +4091,67 @@ with tab_gallery:
 
                 st.markdown("---")
 
-            # ---------- 缩略图网格 ----------
-            gallery_cols_per_row = 5
-            for row_start in range(0, len(top_photos), gallery_cols_per_row):
-                row_photos = top_photos[row_start:row_start + gallery_cols_per_row]
-                gallery_row_cols = st.columns(gallery_cols_per_row)
+            # ---------- 缩略图网格（CSS Grid 自适应） ----------
+            gallery_cards_html = ""
+            for photo_index, photo in enumerate(top_photos):
+                thumb_b64 = photo.get("thumbnail_base64", "")
+                photo_score = photo.get("score", 0)
+                score_color = get_score_color(photo_score)
+                bird_name = photo.get("chinese_name", "未知")
+                photographer = photo.get("user_nickname", "匿名")
+
+                if thumb_b64:
+                    img_html = (
+                        f'<img src="data:image/jpeg;base64,{thumb_b64}" '
+                        f'style="width:100%;aspect-ratio:4/3;object-fit:cover;'
+                        f'border-radius:8px 8px 0 0;display:block;" loading="lazy" alt="{bird_name}">'
+                    )
+                else:
+                    img_html = (
+                        '<div style="width:100%;aspect-ratio:4/3;'
+                        'background:linear-gradient(135deg,#1a3a5c,#2d6a4f);'
+                        'border-radius:8px 8px 0 0;display:flex;'
+                        'align-items:center;justify-content:center;'
+                        'font-size:36px;">📷</div>'
+                    )
+
+                gallery_cards_html += (
+                    f'<div style="background:#fff;border-radius:8px;'
+                    f'box-shadow:0 1px 4px rgba(0,0,0,0.06);overflow:hidden;'
+                    f'border:1px solid #e8e8e8;">'
+                    f'{img_html}'
+                    f'<div style="padding:6px 8px 4px;">'
+                    f'<div style="font-size:12px;font-weight:600;color:#1a3a5c;'
+                    f'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'
+                    f'{bird_name}</div>'
+                    f'<div style="display:flex;align-items:center;justify-content:space-between;margin-top:2px;">'
+                    f'<span style="font-size:10px;color:#888;">{photographer}</span>'
+                    f'<span class="score-pill score-{score_color}" '
+                    f'style="font-size:9px;padding:1px 5px;">'
+                    f'{get_score_emoji(photo_score)} {photo_score}</span>'
+                    f'</div></div></div>'
+                )
+
+            st.markdown(
+                f'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));'
+                f'gap:10px;padding:4px 0 8px;">'
+                f'{gallery_cards_html}</div>',
+                unsafe_allow_html=True,
+            )
+
+            # 用 Streamlit 按钮实现点击查看详情
+            gallery_btn_cols_per_row = 5
+            for row_start in range(0, len(top_photos), gallery_btn_cols_per_row):
+                row_photos = top_photos[row_start:row_start + gallery_btn_cols_per_row]
+                btn_cols = st.columns(gallery_btn_cols_per_row)
                 for col_idx, photo in enumerate(row_photos):
-                    with gallery_row_cols[col_idx]:
-                        thumb_b64 = photo.get("thumbnail_base64", "")
-                        photo_score = photo.get("score", 0)
-                        score_color = get_score_color(photo_score)
-                        bird_name = photo.get("chinese_name", "未知")
-                        photographer = photo.get("user_nickname", "匿名")
-                        photo_index = row_start + col_idx
-
-                        if thumb_b64:
-                            st.markdown(
-                                f'<img src="data:image/jpeg;base64,{thumb_b64}" '
-                                f'style="width:100%;height:130px;object-fit:cover;'
-                                f'border-radius:8px 8px 0 0;" loading="lazy" alt="{bird_name}">',
-                                unsafe_allow_html=True,
-                            )
-                        else:
-                            st.markdown(
-                                '<div style="width:100%;height:130px;'
-                                'background:linear-gradient(135deg,#1a3a5c,#2d6a4f);'
-                                'border-radius:8px 8px 0 0;display:flex;'
-                                'align-items:center;justify-content:center;'
-                                'font-size:36px;">📷</div>',
-                                unsafe_allow_html=True,
-                            )
-
-                        st.markdown(
-                            f'<div style="padding:4px 6px 2px;">'
-                            f'<div style="font-size:12px;font-weight:600;color:#1a3a5c;'
-                            f'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'
-                            f'{bird_name}</div>'
-                            f'<div style="display:flex;align-items:center;justify-content:space-between;">'
-                            f'<span style="font-size:10px;color:#888;">{photographer}</span>'
-                            f'<span class="score-pill score-{score_color}" '
-                            f'style="font-size:9px;padding:1px 5px;">'
-                            f'{get_score_emoji(photo_score)} {photo_score}</span>'
-                            f'</div></div>',
-                            unsafe_allow_html=True,
-                        )
-
-                        if st.button("查看详情", key=f"gallery_view_{photo_index}", use_container_width=True):
+                    photo_index = row_start + col_idx
+                    with btn_cols[col_idx]:
+                        if st.button(
+                            f"🔍 {photo.get('chinese_name', '未知')[:4]}",
+                            key=f"gallery_view_{photo_index}",
+                            use_container_width=True,
+                        ):
                             st.session_state["selected_gallery_index"] = photo_index
                             st.rerun()
         else:
