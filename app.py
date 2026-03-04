@@ -2732,6 +2732,15 @@ else:
     if st.query_params.get("nick", "") != nickname_display:
         st.query_params["nick"] = nickname_display
 
+    # 检测退出参数
+    if st.query_params.get("logout") == "1":
+        st.session_state["user_nickname"] = ""
+        st.query_params.clear()
+        st.session_state.pop("identified_cache", None)
+        st.session_state.pop("results_with_bytes", None)
+        st.session_state.pop("zip_bytes", None)
+        st.rerun()
+
     # 已登录：全宽一体化顶栏 — Logo 左 + 用户名&退出 右
     st.markdown(
         f'<div class="hero-section">'
@@ -2746,20 +2755,14 @@ else:
         f'<div style="display:flex;align-items:center;gap:8px;">'
         f'<span style="font-size:14px;">🐦</span>'
         f'<span style="font-size:14px;font-weight:600;color:#fff;">{nickname_display}</span>'
+        f'<span style="color:rgba(255,255,255,0.4);font-size:12px;">|</span>'
+        f'<a href="?logout=1" target="_self" '
+        f'style="font-size:12px;color:rgba(255,255,255,0.7);text-decoration:none;"'
+        f'>退出</a>'
         f'</div>'
         f'</div></div>',
         unsafe_allow_html=True,
     )
-    # 退出按钮（小型文字链接风格）
-    logout_col_spacer, logout_col_btn = st.columns([6, 1])
-    with logout_col_btn:
-        if st.button("退出", type="secondary", key="switch_user"):
-            st.session_state["user_nickname"] = ""
-            st.query_params.pop("nick", None)
-            st.session_state.pop("identified_cache", None)
-            st.session_state.pop("results_with_bytes", None)
-            st.session_state.pop("zip_bytes", None)
-            st.rerun()
 
 user_nickname = st.session_state["user_nickname"]
 
