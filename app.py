@@ -2785,8 +2785,8 @@ except (KeyError, FileNotFoundError):
     pass
 
 
-tab_explore, tab_upload, tab_gallery, tab_history, tab_rank = st.tabs(
-    ["🔭 附近推荐", "📷 添加记录", "📸 佳作榜", "📚 观鸟记录", "🏆 排行榜"]
+tab_explore, tab_upload, tab_history, tab_gallery, tab_rank = st.tabs(
+    ["🔭 附近推荐", "📷 添加记录", "📚 观鸟记录", "📸 佳作榜", "🏆 排行榜"]
 )
 
 # ---- Tab 1: 附近推荐 ----
@@ -3737,62 +3737,55 @@ with tab_upload:
 # ---- Tab 3: 佳作榜 ----
 with tab_gallery:
     if supabase_client:
-        top_photos = fetch_top_photos(limit=20)
+        top_photos = fetch_top_photos(limit=30)
         if top_photos:
-            # 分成两行显示
-            row1_photos = top_photos[:10]
-            row2_photos = top_photos[10:]
+            gallery_cards_html = ""
+            for photo in top_photos:
+                thumb_b64 = photo.get("thumbnail_base64", "")
+                photo_score = photo.get("score", 0)
+                score_color = get_score_color(photo_score)
+                bird_name = photo.get("chinese_name", "未知")
+                photographer = photo.get("user_nickname", "匿名")
 
-            for row_photos in [row1_photos, row2_photos]:
-                if not row_photos:
-                    continue
-                gallery_cards_html = ""
-                for photo in row_photos:
-                    thumb_b64 = photo.get("thumbnail_base64", "")
-                    photo_score = photo.get("score", 0)
-                    score_color = get_score_color(photo_score)
-                    bird_name = photo.get("chinese_name", "未知")
-                    photographer = photo.get("user_nickname", "匿名")
-
-                    if thumb_b64:
-                        img_html = (
-                            f'<img src="data:image/jpeg;base64,{thumb_b64}" '
-                            f'style="width:100%;height:160px;object-fit:cover;'
-                            f'border-radius:10px 10px 0 0;" loading="lazy" alt="{bird_name}">'
-                        )
-                    else:
-                        img_html = (
-                            '<div style="width:100%;height:160px;'
-                            'background:linear-gradient(135deg,#1a3a5c,#2d6a4f);'
-                            'border-radius:10px 10px 0 0;display:flex;'
-                            'align-items:center;justify-content:center;'
-                            'font-size:40px;">📷</div>'
-                        )
-
-                    gallery_cards_html += (
-                        f'<div style="min-width:160px;max-width:160px;background:#fff;'
-                        f'border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,0.08);'
-                        f'flex-shrink:0;overflow:hidden;">'
-                        f'{img_html}'
-                        f'<div style="padding:8px 10px;">'
-                        f'<div style="font-size:13px;font-weight:600;color:#1a3a5c;'
-                        f'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'
-                        f'{bird_name}</div>'
-                        f'<div style="display:flex;align-items:center;justify-content:space-between;'
-                        f'margin-top:4px;">'
-                        f'<span style="font-size:11px;color:#888;">📷 {photographer}</span>'
-                        f'<span class="score-pill score-{score_color}" '
-                        f'style="font-size:10px;padding:1px 6px;">'
-                        f'{get_score_emoji(photo_score)} {photo_score}</span>'
-                        f'</div></div></div>'
+                if thumb_b64:
+                    img_html = (
+                        f'<img src="data:image/jpeg;base64,{thumb_b64}" '
+                        f'style="width:100%;height:140px;object-fit:cover;'
+                        f'border-radius:10px 10px 0 0;" loading="lazy" alt="{bird_name}">'
+                    )
+                else:
+                    img_html = (
+                        '<div style="width:100%;height:140px;'
+                        'background:linear-gradient(135deg,#1a3a5c,#2d6a4f);'
+                        'border-radius:10px 10px 0 0;display:flex;'
+                        'align-items:center;justify-content:center;'
+                        'font-size:40px;">📷</div>'
                     )
 
-                st.markdown(
-                    f'<div style="display:flex;gap:10px;overflow-x:auto;'
-                    f'padding:4px 0 8px;-webkit-overflow-scrolling:touch;">'
-                    f'{gallery_cards_html}</div>',
-                    unsafe_allow_html=True,
+                gallery_cards_html += (
+                    f'<div style="background:#fff;border-radius:10px;'
+                    f'box-shadow:0 2px 8px rgba(0,0,0,0.06);overflow:hidden;'
+                    f'border:1px solid #e0e0e0;">'
+                    f'{img_html}'
+                    f'<div style="padding:8px 10px;">'
+                    f'<div style="font-size:13px;font-weight:600;color:#1a3a5c;'
+                    f'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'
+                    f'{bird_name}</div>'
+                    f'<div style="display:flex;align-items:center;justify-content:space-between;'
+                    f'margin-top:4px;">'
+                    f'<span style="font-size:11px;color:#888;">📷 {photographer}</span>'
+                    f'<span class="score-pill score-{score_color}" '
+                    f'style="font-size:10px;padding:1px 6px;">'
+                    f'{get_score_emoji(photo_score)} {photo_score}</span>'
+                    f'</div></div></div>'
                 )
+
+            st.markdown(
+                f'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));'
+                f'gap:12px;padding:4px 0 8px;">'
+                f'{gallery_cards_html}</div>',
+                unsafe_allow_html=True,
+            )
         else:
             st.markdown(
                 '<p style="text-align:center; color:#888; font-size:13px; padding:16px 0;">'
