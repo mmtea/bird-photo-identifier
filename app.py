@@ -113,7 +113,7 @@ st.markdown("""
 
     /* 减少顶部空白 */
     .block-container {
-        padding-top: 1rem !important;
+        padding-top: 0 !important;
         padding-left: 2rem !important;
         padding-right: 2rem !important;
     }
@@ -581,21 +581,22 @@ st.markdown("""
         text-decoration: underline;
     }
 
-    /* Tab 页签 — eBird 风格底部高亮 */
+    /* Tab 页签 — eBird 风格底部高亮，与 Hero 等宽 */
     .stTabs {
         background: #ffffff;
-        border-radius: 10px;
+        border-radius: 0;
         padding: 0;
-        margin-top: 0;
+        margin: 0 -1rem;
         box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
         border: 1px solid #e0e0e0;
+        border-top: none;
     }
     /* Tab 按钮行 */
     .stTabs [data-baseweb="tab-list"] {
         gap: 0;
         background: #fafafa;
-        border-radius: 10px 10px 0 0;
-        padding: 0;
+        border-radius: 0;
+        padding: 0 1rem;
         border-bottom: 2px solid #e0e0e0;
     }
     /* 单个 Tab 按钮 */
@@ -631,9 +632,9 @@ st.markdown("""
     .stTabs [data-baseweb="tab-border"] {
         display: none;
     }
-    /* Tab 内容区 */
+    /* Tab 内容区 — 与 Hero 等宽，内部留 padding */
     .stTabs [data-baseweb="tab-panel"] {
-        padding: 20px 16px 16px;
+        padding: 20px calc(16px + 1rem) 16px;
     }
 
     /* PWA 安装提示横幅 */
@@ -2930,10 +2931,17 @@ with tab_explore:
                 )
 
             if weather:
+                from datetime import datetime as _dt
+                today_str = _dt.now().strftime("%m月%d日 %A").replace(
+                    "Monday", "周一").replace("Tuesday", "周二").replace(
+                    "Wednesday", "周三").replace("Thursday", "周四").replace(
+                    "Friday", "周五").replace("Saturday", "周六").replace(
+                    "Sunday", "周日")
                 st.markdown(
                     f'<div style="background:#e8f5e9; padding:10px 14px; '
                     f'border-radius:12px; margin-bottom:8px;">'
                     f'<span style="font-size:13px;">'
+                    f'📅 <b>{today_str}</b> &nbsp;·&nbsp; '
                     f'{weather.get("emoji", "🌡️")} <b>{weather.get("description", "")}</b> '
                     f'{weather.get("temperature", 0)}°C · 风速 {weather.get("windspeed", 0)}km/h'
                     f'</span><br>'
