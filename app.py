@@ -111,16 +111,24 @@ st.markdown("""
     ._container_gzau3_1 { display: none !important; }
     ._profilePreview_gzau3_63 { display: none !important; }
 
-    /* 减少顶部空白 */
+    /* 彻底消除顶部空白 */
     .block-container {
         padding-top: 0 !important;
+        padding-bottom: 0 !important;
         padding-left: 1rem !important;
         padding-right: 1rem !important;
+        max-width: 100% !important;
     }
+    .stApp > header { height: 0 !important; }
+    .stMainBlockContainer { padding-top: 0 !important; }
+    [data-testid="stAppViewBlockContainer"] { padding-top: 0 !important; }
+    .appview-container { padding-top: 0 !important; }
+    section[data-testid="stSidebar"] + section { padding-top: 0 !important; }
+    .main .block-container { padding-top: 0 !important; }
 
     /* 主标题区域 — eBird 深蓝绿渐变（全宽无圆角） */
     .hero-section {
-        padding: 18px 24px;
+        padding: 14px 24px;
         position: relative;
         overflow: hidden;
         border-radius: 0;
@@ -129,6 +137,8 @@ st.markdown("""
         padding-left: calc(24px + 1rem);
         padding-right: calc(24px + 1rem);
         box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+        width: calc(100% + 2rem);
+        box-sizing: border-box;
     }
     .hero-icon {
         font-size: 36px;
