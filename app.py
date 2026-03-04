@@ -4009,7 +4009,7 @@ with tab_gallery:
                     "barsHtml": bars_html,
                 })
 
-            # 缩略图卡片 HTML（可点击）
+            # 缩略图卡片 HTML（纯展示，带 data-gallery-idx 属性）
             gallery_cards_html = ""
             for idx, gd in enumerate(gallery_data_list):
                 if gd["thumb"]:
@@ -4028,12 +4028,10 @@ with tab_gallery:
                     )
 
                 gallery_cards_html += (
-                    f'<div class="gallery-card" onclick="openGalleryModal({idx})" '
+                    f'<div data-gallery-idx="{idx}" '
                     f'style="background:#fff;border-radius:8px;cursor:pointer;'
                     f'box-shadow:0 1px 4px rgba(0,0,0,0.06);overflow:hidden;'
-                    f'border:1px solid #e8e8e8;transition:transform 0.15s,box-shadow 0.15s;"'
-                    f' onmouseover="this.style.transform=\'translateY(-2px)\';this.style.boxShadow=\'0 4px 12px rgba(0,0,0,0.12)\'"'
-                    f' onmouseout="this.style.transform=\'none\';this.style.boxShadow=\'0 1px 4px rgba(0,0,0,0.06)\'">'
+                    f'border:1px solid #e8e8e8;transition:transform 0.15s,box-shadow 0.15s;">'
                     f'{img_tag}'
                     f'<div style="padding:6px 8px 6px;">'
                     f'<div style="font-size:12px;font-weight:600;color:#1a3a5c;'
@@ -4047,16 +4045,23 @@ with tab_gallery:
                     f'</div></div></div>'
                 )
 
-            # 将详情数据序列化为 JS 变量（去掉 thumb 避免重复传输过大）
-            gallery_modal_data = []
-            for gd in gallery_data_list:
-                gallery_modal_data.append({
-                    "thumb": gd["thumb"][:50] + "..." if len(gd["thumb"]) > 50 else gd["thumb"],
+            # 渲染缩略图网格（st.markdown，纯展示无事件）
+            st.markdown(
+                f'<div id="galleryGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));'
+                f'gap:10px;padding:4px 0 8px;">'
+                f'{gallery_cards_html}</div>',
+                unsafe_allow_html=True,
+            )
+
+            # 用 components.html 注入 JS：在父窗口创建 modal 并绑定点击事件
+            import streamlit.components.v1 as _components
+            gallery_js_data = _json.dumps({
+                "thumbs": [gd["thumb"] for gd in gallery_data_list],
+                "details": [{
                     "name": gd["name"],
                     "enName": gd["enName"],
                     "score": gd["score"],
                     "scoreEmoji": gd["scoreEmoji"],
-                    "scoreColor": gd["scoreColor"],
                     "photographer": gd["photographer"],
                     "date": gd["date"],
                     "order": gd["order"],
@@ -4064,134 +4069,159 @@ with tab_gallery:
                     "basis": gd["basis"],
                     "desc": gd["desc"],
                     "barsHtml": gd["barsHtml"],
-                })
+                } for gd in gallery_data_list],
+            }, ensure_ascii=False)
 
-            # 完整 HTML：网格 + modal + JS
-            full_gallery_html = f'''
-            <style>
-            .gallery-modal-overlay {{
-                display:none; position:fixed; top:0; left:0; right:0; bottom:0;
-                background:rgba(0,0,0,0.6); z-index:10000;
-                justify-content:center; align-items:center; padding:16px;
-            }}
-            .gallery-modal-overlay.active {{ display:flex; }}
-            .gallery-modal {{
-                background:#fff; border-radius:12px; max-width:680px; width:100%;
-                max-height:90vh; overflow-y:auto; position:relative;
-                box-shadow:0 20px 60px rgba(0,0,0,0.3);
-                animation: modalIn 0.2s ease;
-            }}
-            @keyframes modalIn {{
-                from {{ opacity:0; transform:scale(0.95); }}
-                to {{ opacity:1; transform:scale(1); }}
-            }}
-            .gallery-modal-close {{
-                position:sticky; top:0; right:0; z-index:10;
-                display:flex; justify-content:flex-end; padding:8px 12px;
-                background:linear-gradient(180deg,rgba(255,255,255,0.95),rgba(255,255,255,0));
-            }}
-            .gallery-modal-close button {{
-                background:#f0f0f0; border:none; border-radius:50%;
-                width:32px; height:32px; font-size:18px; cursor:pointer;
-                color:#333; display:flex; align-items:center; justify-content:center;
-            }}
-            .gallery-modal-close button:hover {{ background:#e0e0e0; }}
-            .gallery-modal img.modal-main-img {{
-                width:100%; display:block; border-radius:0;
-            }}
-            .gallery-modal-info {{
-                padding:16px 20px 20px;
-            }}
-            @media screen and (max-width:480px) {{
-                .gallery-modal {{ border-radius:8px; max-height:85vh; }}
-                .gallery-modal-info {{ padding:12px 14px 16px; }}
-            }}
-            </style>
-
-            <!-- 缩略图网格 -->
-            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));
-                gap:10px;padding:4px 0 8px;">
-                {gallery_cards_html}
-            </div>
-
-            <!-- Modal 弹窗 -->
-            <div class="gallery-modal-overlay" id="galleryModalOverlay" onclick="closeGalleryModal(event)">
-                <div class="gallery-modal" id="galleryModal" onclick="event.stopPropagation()">
-                    <div class="gallery-modal-close">
-                        <button onclick="closeGalleryModal()">&times;</button>
-                    </div>
-                    <div id="galleryModalContent"></div>
-                </div>
-            </div>
-
+            _components.html(f"""
             <script>
-            var galleryThumbs = {_json.dumps([gd["thumb"] for gd in gallery_data_list])};
-            var galleryDetails = {_json.dumps(gallery_modal_data, ensure_ascii=False)};
+            (function() {{
+                var parentDoc = window.parent.document;
+                if (!parentDoc) return;
 
-            function openGalleryModal(idx) {{
-                var overlay = document.getElementById('galleryModalOverlay');
-                var content = document.getElementById('galleryModalContent');
-                var d = galleryDetails[idx];
-                var thumbSrc = galleryThumbs[idx];
-
-                var imgHtml = thumbSrc
-                    ? '<img class="modal-main-img" src="data:image/jpeg;base64,' + thumbSrc + '" alt="' + d.name + '">'
-                    : '<div style="width:100%;height:300px;background:linear-gradient(135deg,#1a3a5c,#2d6a4f);display:flex;align-items:center;justify-content:center;font-size:60px;">📷</div>';
-
-                var taxonomyHtml = '';
-                if (d.order) taxonomyHtml += '<span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;background:#e8f5e9;color:#2d6a4f;margin-right:4px;">' + d.order + '</span>';
-                if (d.family) taxonomyHtml += '<span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;background:#fff3e0;color:#e8a317;">' + d.family + '</span>';
-
-                var metaParts = ['📷 ' + d.photographer];
-                if (d.date) metaParts.push('📅 ' + d.date);
-
-                var basisHtml = d.basis
-                    ? '<div style="font-size:12px;color:#555;margin-top:10px;padding:8px 10px;background:#f1f8e9;border-radius:6px;"><b style="color:#4a7c59;">识别依据</b><br>' + d.basis + '</div>'
-                    : '';
-
-                var descHtml = d.desc
-                    ? '<div style="font-size:13px;color:#3a3a3c;line-height:1.7;margin-top:10px;padding:10px 12px;background:#fafafa;border-radius:6px;border:1px solid #e8e8e8;"><b style="color:#1a3a5c;">🐦 鸟类介绍</b><br>' + d.desc + '</div>'
-                    : '';
-
-                var barsSection = d.barsHtml
-                    ? '<div style="margin-top:10px;">' + d.barsHtml + '</div>'
-                    : '';
-
-                content.innerHTML = imgHtml +
-                    '<div class="gallery-modal-info">' +
-                    '<div style="font-size:20px;font-weight:700;color:#1a3a5c;">' + d.name + '</div>' +
-                    (d.enName ? '<div style="font-size:13px;color:#888;font-style:italic;margin-top:2px;">' + d.enName + '</div>' : '') +
-                    (taxonomyHtml ? '<div style="margin-top:6px;">' + taxonomyHtml + '</div>' : '') +
-                    '<div style="margin-top:8px;"><span style="display:inline-block;padding:3px 10px;border-radius:4px;font-size:13px;font-weight:600;background:#e8f5e9;color:#2d6a4f;">' + d.scoreEmoji + ' ' + d.score + '</span></div>' +
-                    '<div style="font-size:13px;color:#888;margin-top:8px;">' + metaParts.join(' &nbsp;·&nbsp; ') + '</div>' +
-                    basisHtml + barsSection + descHtml +
-                    '</div>';
-
-                overlay.classList.add('active');
-                document.body.style.overflow = 'hidden';
-            }}
-
-            function closeGalleryModal(event) {{
-                if (event && event.target && event.target.id !== 'galleryModalOverlay') return;
-                var overlay = document.getElementById('galleryModalOverlay');
-                overlay.classList.remove('active');
-                document.body.style.overflow = '';
-            }}
-
-            // ESC 键关闭
-            document.addEventListener('keydown', function(e) {{
-                if (e.key === 'Escape') {{
-                    var overlay = document.getElementById('galleryModalOverlay');
-                    if (overlay && overlay.classList.contains('active')) {{
-                        overlay.classList.remove('active');
-                        document.body.style.overflow = '';
-                    }}
+                // 注入 modal 样式到父窗口（仅一次）
+                if (!parentDoc.getElementById('galleryModalStyle')) {{
+                    var style = parentDoc.createElement('style');
+                    style.id = 'galleryModalStyle';
+                    style.textContent = `
+                        #galleryModalOverlay {{
+                            display:none; position:fixed; top:0; left:0; right:0; bottom:0;
+                            background:rgba(0,0,0,0.6); z-index:10000;
+                            justify-content:center; align-items:center; padding:16px;
+                        }}
+                        #galleryModalOverlay.active {{ display:flex; }}
+                        #galleryModal {{
+                            background:#fff; border-radius:12px; max-width:680px; width:100%;
+                            max-height:90vh; overflow-y:auto; position:relative;
+                            box-shadow:0 20px 60px rgba(0,0,0,0.3);
+                            animation: galleryModalIn 0.2s ease;
+                        }}
+                        @keyframes galleryModalIn {{
+                            from {{ opacity:0; transform:scale(0.95); }}
+                            to {{ opacity:1; transform:scale(1); }}
+                        }}
+                        #galleryModal .modal-close-btn {{
+                            position:sticky; top:0; z-index:10;
+                            display:flex; justify-content:flex-end; padding:8px 12px;
+                            background:linear-gradient(180deg,rgba(255,255,255,0.95),rgba(255,255,255,0));
+                        }}
+                        #galleryModal .modal-close-btn button {{
+                            background:#f0f0f0; border:none; border-radius:50%;
+                            width:36px; height:36px; font-size:20px; cursor:pointer;
+                            color:#333; display:flex; align-items:center; justify-content:center;
+                        }}
+                        #galleryModal .modal-close-btn button:hover {{ background:#e0e0e0; }}
+                        #galleryModal .modal-main-img {{
+                            width:100%; display:block;
+                        }}
+                        #galleryModal .modal-info {{
+                            padding:16px 20px 20px;
+                        }}
+                        @media screen and (max-width:480px) {{
+                            #galleryModal {{ border-radius:8px; max-height:85vh; }}
+                            #galleryModal .modal-info {{ padding:12px 14px 16px; }}
+                        }}
+                        /* 卡片 hover 效果 */
+                        [data-gallery-idx] {{
+                            transition: transform 0.15s, box-shadow 0.15s;
+                        }}
+                        [data-gallery-idx]:hover {{
+                            transform: translateY(-2px);
+                            box-shadow: 0 4px 12px rgba(0,0,0,0.12) !important;
+                        }}
+                    `;
+                    parentDoc.head.appendChild(style);
                 }}
-            }});
-            </script>
-            '''
 
-            st.markdown(full_gallery_html, unsafe_allow_html=True)
+                // 创建 modal DOM（仅一次）
+                var overlay = parentDoc.getElementById('galleryModalOverlay');
+                if (!overlay) {{
+                    overlay = parentDoc.createElement('div');
+                    overlay.id = 'galleryModalOverlay';
+                    overlay.innerHTML = '<div id="galleryModal"><div class="modal-close-btn"><button id="galleryCloseBtn">&times;</button></div><div id="galleryModalContent"></div></div>';
+                    parentDoc.body.appendChild(overlay);
+
+                    // 点击遮罩关闭
+                    overlay.addEventListener('click', function(e) {{
+                        if (e.target === overlay) {{
+                            overlay.classList.remove('active');
+                        }}
+                    }});
+                    // 关闭按钮
+                    parentDoc.getElementById('galleryCloseBtn').addEventListener('click', function() {{
+                        overlay.classList.remove('active');
+                    }});
+                    // ESC 关闭
+                    parentDoc.addEventListener('keydown', function(e) {{
+                        if (e.key === 'Escape' && overlay.classList.contains('active')) {{
+                            overlay.classList.remove('active');
+                        }}
+                    }});
+                }}
+
+                // 数据
+                var galleryData = {gallery_js_data};
+
+                // 打开 modal
+                function openModal(idx) {{
+                    var d = galleryData.details[idx];
+                    var thumbSrc = galleryData.thumbs[idx];
+                    var content = parentDoc.getElementById('galleryModalContent');
+
+                    var imgHtml = thumbSrc
+                        ? '<img class="modal-main-img" src="data:image/jpeg;base64,' + thumbSrc + '">'
+                        : '<div style="width:100%;height:300px;background:linear-gradient(135deg,#1a3a5c,#2d6a4f);display:flex;align-items:center;justify-content:center;font-size:60px;">📷</div>';
+
+                    var taxonomyHtml = '';
+                    if (d.order) taxonomyHtml += '<span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;background:#e8f5e9;color:#2d6a4f;margin-right:4px;">' + d.order + '</span>';
+                    if (d.family) taxonomyHtml += '<span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;background:#fff3e0;color:#e8a317;">' + d.family + '</span>';
+
+                    var metaParts = ['📷 ' + d.photographer];
+                    if (d.date) metaParts.push('📅 ' + d.date);
+
+                    var basisHtml = d.basis
+                        ? '<div style="font-size:12px;color:#555;margin-top:10px;padding:8px 10px;background:#f1f8e9;border-radius:6px;"><b style="color:#4a7c59;">识别依据</b><br>' + d.basis + '</div>'
+                        : '';
+                    var descHtml = d.desc
+                        ? '<div style="font-size:13px;color:#3a3a3c;line-height:1.7;margin-top:10px;padding:10px 12px;background:#fafafa;border-radius:6px;border:1px solid #e8e8e8;"><b style="color:#1a3a5c;">🐦 鸟类介绍</b><br>' + d.desc + '</div>'
+                        : '';
+                    var barsSection = d.barsHtml
+                        ? '<div style="margin-top:10px;">' + d.barsHtml + '</div>'
+                        : '';
+
+                    content.innerHTML = imgHtml +
+                        '<div class="modal-info">' +
+                        '<div style="font-size:20px;font-weight:700;color:#1a3a5c;">' + d.name + '</div>' +
+                        (d.enName ? '<div style="font-size:13px;color:#888;font-style:italic;margin-top:2px;">' + d.enName + '</div>' : '') +
+                        (taxonomyHtml ? '<div style="margin-top:6px;">' + taxonomyHtml + '</div>' : '') +
+                        '<div style="margin-top:8px;"><span style="display:inline-block;padding:3px 10px;border-radius:4px;font-size:13px;font-weight:600;background:#e8f5e9;color:#2d6a4f;">' + d.scoreEmoji + ' ' + d.score + '</span></div>' +
+                        '<div style="font-size:13px;color:#888;margin-top:8px;">' + metaParts.join(' &middot; ') + '</div>' +
+                        basisHtml + barsSection + descHtml +
+                        '</div>';
+
+                    overlay.classList.add('active');
+                }}
+
+                // 给父窗口中的卡片绑定点击事件（事件委托）
+                function bindCardClicks() {{
+                    var cards = parentDoc.querySelectorAll('[data-gallery-idx]');
+                    cards.forEach(function(card) {{
+                        if (card.dataset.galleryBound) return;
+                        card.dataset.galleryBound = '1';
+                        card.addEventListener('click', function() {{
+                            var idx = parseInt(this.dataset.galleryIdx);
+                            openModal(idx);
+                        }});
+                    }});
+                }}
+
+                // 延迟绑定（等 Streamlit 渲染完成）
+                bindCardClicks();
+                setTimeout(bindCardClicks, 500);
+                setTimeout(bindCardClicks, 1500);
+                setTimeout(bindCardClicks, 3000);
+            }})();
+            </script>
+            """, height=0, scrolling=False)
         else:
             st.markdown(
                 '<p style="text-align:center; color:#888; font-size:13px; padding:16px 0;">'
