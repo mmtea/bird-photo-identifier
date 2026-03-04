@@ -2369,9 +2369,11 @@ def fetch_leaderboard(limit: int = 20) -> list:
             scores = data["scores"]
             avg_score = round(sum(scores) / len(scores), 1) if scores else 0
             best_score = max(scores) if scores else 0
+            species_list = sorted(data["species"])
             leaderboard.append({
                 "nickname": nickname,
-                "species": len(data["species"]),
+                "species": len(species_list),
+                "species_list": species_list,
                 "total": data["total"],
                 "avg_score": avg_score,
                 "best_score": best_score,
@@ -3811,6 +3813,11 @@ if supabase_client and user_nickname:
             item_class = "leaderboard-item leaderboard-item-current" if is_current_user else "leaderboard-item"
             name_class = "leaderboard-name leaderboard-name-current" if is_current_user else "leaderboard-name"
 
+            species_list = entry.get("species_list", [])
+            species_preview = "、".join(species_list[:8])
+            if len(species_list) > 8:
+                species_preview += f" 等{len(species_list)}种"
+
             items_html += (
                 f'<div class="{item_class}">'
                 f'{rank_html}'
@@ -3818,6 +3825,9 @@ if supabase_client and user_nickname:
                 f'<p class="{name_class}">{entry["nickname"]}</p>'
                 f'<p class="leaderboard-stats">'
                 f'🐦 {entry["species"]}种 · 📷 {entry["total"]}张 · ⭐ {entry["avg_score"]}</p>'
+                f'<p style="font-size:11px;color:#aaa;margin:2px 0 0;'
+                f'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'
+                f'{species_preview}</p>'
                 f'</div>'
                 f'</div>'
             )
