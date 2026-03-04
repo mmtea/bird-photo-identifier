@@ -2541,11 +2541,9 @@ def fetch_leaderboard(limit: int = 20) -> list:
         records = result if isinstance(result, list) else []
         if not records:
             return []
-        # 按用户聚合统计（排除导入记录，只统计拍照识别）
+        # 按用户聚合统计（包含所有记录：拍照识别 + 导入记录）
         user_data = {}
         for record in records:
-            if record.get("confidence") == "imported":
-                continue
             nickname = record.get("user_nickname", "")
             if not nickname:
                 continue
@@ -3993,21 +3991,13 @@ with tab_rank:
                 item_class = "leaderboard-item leaderboard-item-current" if is_current_user else "leaderboard-item"
                 name_class = "leaderboard-name leaderboard-name-current" if is_current_user else "leaderboard-name"
 
-                species_list = entry.get("species_list", [])
-                species_preview = "、".join(species_list[:8])
-                if len(species_list) > 8:
-                    species_preview += f" 等{len(species_list)}种"
-
                 items_html += (
                     f'<div class="{item_class}">'
                     f'{rank_html}'
                     f'<div style="flex:1;min-width:0;">'
                     f'<p class="{name_class}">{entry["nickname"]}</p>'
                     f'<p class="leaderboard-stats">'
-                    f'🐦 {entry["species"]}种 · 📷 {entry["total"]}张 · ⭐ {entry["avg_score"]}</p>'
-                    f'<p style="font-size:11px;color:#aaa;margin:2px 0 0;'
-                    f'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'
-                    f'{species_preview}</p>'
+                    f'🐦 {entry["species"]}种 · 📷 {entry["total"]}条记录 · ⭐ {entry["avg_score"]}</p>'
                     f'</div>'
                     f'</div>'
                 )
