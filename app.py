@@ -2521,7 +2521,11 @@ def fetch_top_photos(limit: int = 10) -> list:
     """查询全局评分最高的照片（缓存 60 秒）"""
     try:
         params = (
-            f"select=id,user_nickname,chinese_name,score,thumbnail_base64"
+            f"select=id,user_nickname,chinese_name,english_name,score,"
+            f"thumbnail_base64,shoot_date,identification_basis,bird_description,"
+            f"score_sharpness,score_composition,score_lighting,"
+            f"score_background,score_pose,score_artistry,"
+            f"order_chinese,family_chinese"
             f"&order=score.desc"
             f"&limit={limit}"
             f"&score=gt.0"
@@ -3737,53 +3741,194 @@ with tab_gallery:
     if supabase_client:
         top_photos = fetch_top_photos(limit=30)
         if top_photos:
-            gallery_cards_html = ""
-            for photo in top_photos:
-                thumb_b64 = photo.get("thumbnail_base64", "")
-                photo_score = photo.get("score", 0)
-                score_color = get_score_color(photo_score)
-                bird_name = photo.get("chinese_name", "未知")
-                photographer = photo.get("user_nickname", "匿名")
+            # ---------- 详情展示区（选中某张佳作时显示） ----------
+            selected_gallery_index = st.session_state.get("selected_gallery_index", None)
+            if selected_gallery_index is not None and 0 <= selected_gallery_index < len(top_photos):
+                selected_photo = top_photos[selected_gallery_index]
+                sp_thumb = selected_photo.get("thumbnail_base64", "")
+                sp_name = selected_photo.get("chinese_name", "未知")
+                sp_en_name = selected_photo.get("english_name", "")
+                sp_score = selected_photo.get("score", 0)
+                sp_photographer = selected_photo.get("user_nickname", "匿名")
+                sp_date = selected_photo.get("shoot_date", "")
+                sp_basis = selected_photo.get("identification_basis", "")
+                sp_desc = selected_photo.get("bird_description", "")
+                sp_order = selected_photo.get("order_chinese", "")
+                sp_family = selected_photo.get("family_chinese", "")
+                sp_score_color = get_score_color(sp_score)
 
-                if thumb_b64:
-                    img_html = (
-                        f'<img src="data:image/jpeg;base64,{thumb_b64}" '
-                        f'style="width:100%;height:140px;object-fit:cover;'
-                        f'border-radius:10px 10px 0 0;" loading="lazy" alt="{bird_name}">'
+                # 关闭按钮
+                if st.button("✕ 返回佳作榜", key="close_gallery_detail", use_container_width=True):
+                    st.session_state["selected_gallery_index"] = None
+                    st.rerun()
+
+                # 大图 + 详情双栏
+                detail_col_img, detail_col_info = st.columns([3, 2])
+                with detail_col_img:
+                    if sp_thumb:
+                        import base64 as _b64
+                        try:
+                            img_bytes = _b64.b64decode(sp_thumb)
+                            st.image(img_bytes, use_container_width=True)
+                        except Exception:
+                            st.markdown(
+                                f'<img src="data:image/jpeg;base64,{sp_thumb}" '
+                                f'style="width:100%;border-radius:10px;">',
+                                unsafe_allow_html=True,
+                            )
+                    else:
+                        st.markdown(
+                            '<div style="width:100%;height:300px;'
+                            'background:linear-gradient(135deg,#1a3a5c,#2d6a4f);'
+                            'border-radius:10px;display:flex;align-items:center;'
+                            'justify-content:center;font-size:60px;">📷</div>',
+                            unsafe_allow_html=True,
+                        )
+
+                with detail_col_info:
+                    # 鸟种名称
+                    st.markdown(
+                        f'<div style="font-size:22px;font-weight:700;color:#1a3a5c;">'
+                        f'{sp_name}</div>',
+                        unsafe_allow_html=True,
                     )
-                else:
-                    img_html = (
-                        '<div style="width:100%;height:140px;'
-                        'background:linear-gradient(135deg,#1a3a5c,#2d6a4f);'
-                        'border-radius:10px 10px 0 0;display:flex;'
-                        'align-items:center;justify-content:center;'
-                        'font-size:40px;">📷</div>'
+                    if sp_en_name:
+                        st.markdown(
+                            f'<p style="font-size:13px;color:#888;margin-top:2px;'
+                            f'font-style:italic;">{sp_en_name}</p>',
+                            unsafe_allow_html=True,
+                        )
+
+                    # 分类标签
+                    taxonomy_html = ""
+                    if sp_order:
+                        taxonomy_html += f'<span class="taxonomy-pill order-pill">{sp_order}</span> '
+                    if sp_family:
+                        taxonomy_html += f'<span class="taxonomy-pill family-pill">{sp_family}</span>'
+                    if taxonomy_html:
+                        st.markdown(taxonomy_html, unsafe_allow_html=True)
+
+                    # 评分
+                    st.markdown(
+                        f'<div style="margin-top:8px;">'
+                        f'<span class="score-pill score-{sp_score_color}" '
+                        f'style="font-size:14px;padding:4px 12px;">'
+                        f'{get_score_emoji(sp_score)} {sp_score}</span></div>',
+                        unsafe_allow_html=True,
                     )
 
-                gallery_cards_html += (
-                    f'<div style="background:#fff;border-radius:10px;'
-                    f'box-shadow:0 2px 8px rgba(0,0,0,0.06);overflow:hidden;'
-                    f'border:1px solid #e0e0e0;">'
-                    f'{img_html}'
-                    f'<div style="padding:8px 10px;">'
-                    f'<div style="font-size:13px;font-weight:600;color:#1a3a5c;'
-                    f'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'
-                    f'{bird_name}</div>'
-                    f'<div style="display:flex;align-items:center;justify-content:space-between;'
-                    f'margin-top:4px;">'
-                    f'<span style="font-size:11px;color:#888;">📷 {photographer}</span>'
-                    f'<span class="score-pill score-{score_color}" '
-                    f'style="font-size:10px;padding:1px 6px;">'
-                    f'{get_score_emoji(photo_score)} {photo_score}</span>'
-                    f'</div></div></div>'
-                )
+                    # 摄影师 & 日期
+                    meta_parts = [f"📷 {sp_photographer}"]
+                    if sp_date and len(sp_date) >= 8:
+                        formatted_date = f"{sp_date[:4]}.{sp_date[4:6]}.{sp_date[6:8]}"
+                        meta_parts.append(f"📅 {formatted_date}")
+                    st.markdown(
+                        f'<div style="font-size:13px;color:#888;margin-top:8px;">'
+                        f'{" &nbsp;·&nbsp; ".join(meta_parts)}</div>',
+                        unsafe_allow_html=True,
+                    )
 
-            st.markdown(
-                f'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));'
-                f'gap:12px;padding:4px 0 8px;">'
-                f'{gallery_cards_html}</div>',
-                unsafe_allow_html=True,
-            )
+                    # 识别依据
+                    if sp_basis:
+                        st.markdown(
+                            f'<div style="font-size:12px;color:#555;margin-top:10px;'
+                            f'padding:8px 10px;background:#f1f8e9;border-radius:6px;">'
+                            f'<b style="color:#4a7c59;">识别依据</b><br>{sp_basis}</div>',
+                            unsafe_allow_html=True,
+                        )
+
+                    # 评分维度条
+                    dimensions = [
+                        ("清晰", selected_photo.get("score_sharpness", 0), 20),
+                        ("构图", selected_photo.get("score_composition", 0), 20),
+                        ("光线", selected_photo.get("score_lighting", 0), 20),
+                        ("背景", selected_photo.get("score_background", 0), 15),
+                        ("姿态", selected_photo.get("score_pose", 0), 15),
+                        ("艺术", selected_photo.get("score_artistry", 0), 10),
+                    ]
+                    has_dimensions = any(d[1] > 0 for d in dimensions)
+                    if has_dimensions:
+                        bars_html = '<div style="margin-top:10px;">'
+                        for dim_name, dim_score, dim_max in dimensions:
+                            percentage = (dim_score / dim_max * 100) if dim_max > 0 else 0
+                            if percentage >= 85:
+                                bar_color = "#2d6a4f"
+                            elif percentage >= 70:
+                                bar_color = "#4a7c59"
+                            elif percentage >= 50:
+                                bar_color = "#e8a317"
+                            else:
+                                bar_color = "#c0392b"
+                            bars_html += (
+                                f'<div style="display:flex;align-items:center;margin:3px 0;font-size:11px;">'
+                                f'<span style="width:28px;color:#888;font-weight:500;flex-shrink:0;">{dim_name}</span>'
+                                f'<div style="flex:1;height:6px;background:rgba(0,0,0,0.06);border-radius:3px;margin:0 4px;overflow:hidden;">'
+                                f'<div style="width:{percentage}%;height:100%;background:{bar_color};border-radius:3px;"></div></div>'
+                                f'<span style="width:20px;text-align:right;color:#888;font-size:10px;">{dim_score}</span></div>'
+                            )
+                        bars_html += '</div>'
+                        st.markdown(bars_html, unsafe_allow_html=True)
+
+                # 鸟类介绍（大图下方全宽）
+                if sp_desc:
+                    st.markdown(
+                        f'<div style="font-size:13px;color:#3a3a3c;line-height:1.7;'
+                        f'margin-top:12px;padding:12px 14px;background:#fafafa;'
+                        f'border-radius:8px;border:1px solid #e8e8e8;">'
+                        f'<b style="color:#1a3a5c;">🐦 鸟类介绍</b><br>{sp_desc}</div>',
+                        unsafe_allow_html=True,
+                    )
+
+                st.markdown("---")
+
+            # ---------- 缩略图网格 ----------
+            gallery_cols_per_row = 5
+            for row_start in range(0, len(top_photos), gallery_cols_per_row):
+                row_photos = top_photos[row_start:row_start + gallery_cols_per_row]
+                gallery_row_cols = st.columns(gallery_cols_per_row)
+                for col_idx, photo in enumerate(row_photos):
+                    with gallery_row_cols[col_idx]:
+                        thumb_b64 = photo.get("thumbnail_base64", "")
+                        photo_score = photo.get("score", 0)
+                        score_color = get_score_color(photo_score)
+                        bird_name = photo.get("chinese_name", "未知")
+                        photographer = photo.get("user_nickname", "匿名")
+                        photo_index = row_start + col_idx
+
+                        if thumb_b64:
+                            st.markdown(
+                                f'<img src="data:image/jpeg;base64,{thumb_b64}" '
+                                f'style="width:100%;height:130px;object-fit:cover;'
+                                f'border-radius:8px 8px 0 0;" loading="lazy" alt="{bird_name}">',
+                                unsafe_allow_html=True,
+                            )
+                        else:
+                            st.markdown(
+                                '<div style="width:100%;height:130px;'
+                                'background:linear-gradient(135deg,#1a3a5c,#2d6a4f);'
+                                'border-radius:8px 8px 0 0;display:flex;'
+                                'align-items:center;justify-content:center;'
+                                'font-size:36px;">📷</div>',
+                                unsafe_allow_html=True,
+                            )
+
+                        st.markdown(
+                            f'<div style="padding:4px 6px 2px;">'
+                            f'<div style="font-size:12px;font-weight:600;color:#1a3a5c;'
+                            f'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'
+                            f'{bird_name}</div>'
+                            f'<div style="display:flex;align-items:center;justify-content:space-between;">'
+                            f'<span style="font-size:10px;color:#888;">{photographer}</span>'
+                            f'<span class="score-pill score-{score_color}" '
+                            f'style="font-size:9px;padding:1px 5px;">'
+                            f'{get_score_emoji(photo_score)} {photo_score}</span>'
+                            f'</div></div>',
+                            unsafe_allow_html=True,
+                        )
+
+                        if st.button("查看详情", key=f"gallery_view_{photo_index}", use_container_width=True):
+                            st.session_state["selected_gallery_index"] = photo_index
+                            st.rerun()
         else:
             st.markdown(
                 '<p style="text-align:center; color:#888; font-size:13px; padding:16px 0;">'
