@@ -2619,9 +2619,8 @@ if supabase_client and user_nickname:
                             url.searchParams.set('geo_lat', lat);
                             url.searchParams.set('geo_lon', lon);
                             window.parent.history.replaceState({}, '', url);
-                            // Trigger rerun
-                            window.parent.document.querySelectorAll('button[kind="secondary"]').forEach(function(){});
-                            setTimeout(function(){ window.parent.location.reload(); }, 500);
+                            // Navigate with geo params to trigger Streamlit rerun (single reload)
+                            window.parent.location.href = url.toString();
                         },
                         function(err) {
                             document.getElementById('geo-status').innerHTML =
@@ -2637,6 +2636,7 @@ if supabase_client and user_nickname:
             geo_lat_str = st.query_params.get("geo_lat", "")
             geo_lon_str = st.query_params.get("geo_lon", "")
             if geo_lat_str and geo_lon_str:
+                # 一次性处理 geo 参数：解析 → 设置 state → 清理参数
                 try:
                     geo_lat = float(geo_lat_str)
                     geo_lon = float(geo_lon_str)
@@ -2649,12 +2649,13 @@ if supabase_client and user_nickname:
                         st.session_state["loc_city"] = matched_city
                     if geo_result.get("district"):
                         st.session_state["loc_district"] = geo_result["district"]
-                    st.session_state["geo_detected"] = True
-                    # 清理 URL 参数
-                    st.query_params.pop("geo_lat", None)
-                    st.query_params.pop("geo_lon", None)
                 except (ValueError, TypeError):
-                    st.session_state["geo_detected"] = True
+                    pass
+                st.session_state["geo_detected"] = True
+                # 批量清理 geo URL 参数（只触发一次 rerun）
+                del st.query_params["geo_lat"]
+                del st.query_params["geo_lon"]
+                st.rerun()
             else:
                 import streamlit.components.v1 as components
                 components.html(geo_js, height=30)
