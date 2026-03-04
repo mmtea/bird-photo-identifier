@@ -114,8 +114,8 @@ st.markdown("""
     /* 减少顶部空白 */
     .block-container {
         padding-top: 0 !important;
-        padding-left: 2rem !important;
-        padding-right: 2rem !important;
+        padding-left: 1rem !important;
+        padding-right: 1rem !important;
     }
 
     /* 主标题区域 — eBird 深蓝绿渐变（全宽无圆角） */
