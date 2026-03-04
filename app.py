@@ -3894,26 +3894,37 @@ components.html(
         var doc = window.parent.document;
 
         function findBlockWrapper(block) {
-            // Streamlit DOM: .section-block -> stMarkdown -> stElementContainer -> stVerticalBlock child
-            // Walk up until we find a direct child of a stVerticalBlock
+            // Strategy: walk up from the .section-block element until we find
+            // an element whose parent has data-testid containing 'VerticalBlock'
+            // or 'column', or whose parent has multiple children (the vertical block).
             var node = block;
-            for (var i = 0; i < 10; i++) {
+            for (var i = 0; i < 15; i++) {
                 if (!node.parentElement) break;
                 var p = node.parentElement;
                 var testid = p.getAttribute('data-testid') || '';
-                if (testid === 'stVerticalBlock' || testid.indexOf('VerticalBlock') >= 0 ||
-                    (p.classList && (p.classList.contains('block-container') ||
-                     p.classList.contains('stVerticalBlock')))) {
+                // Match stVerticalBlock, stVerticalBlockBorderWrapper, block-container, etc.
+                if (testid.indexOf('VerticalBlock') >= 0 ||
+                    testid === 'stMainBlockContainer' ||
+                    testid === 'block-container') {
                     return node;
                 }
-                // Also check class names for vertical-block patterns
+                // Also match by class name patterns
                 var cls = p.className || '';
-                if (cls.indexOf('vertical') >= 0 && cls.indexOf('block') >= 0) {
+                if (cls.indexOf('block-container') >= 0 ||
+                    cls.indexOf('stMainBlockContainer') >= 0) {
                     return node;
                 }
                 node = p;
             }
-            // Fallback: return grandparent of block
+            // Fallback: try to find the closest ancestor with data-testid="stVerticalBlock"
+            var vertBlock = block.closest('[data-testid*="VerticalBlock"]');
+            if (vertBlock) {
+                // Find which direct child of vertBlock contains our block
+                var children = Array.from(vertBlock.children);
+                for (var j = 0; j < children.length; j++) {
+                    if (children[j].contains(block)) return children[j];
+                }
+            }
             return block.parentElement ? block.parentElement.parentElement || block.parentElement : block;
         }
 
@@ -3932,8 +3943,19 @@ components.html(
                     if (idx < 0) return;
                     var targets = [];
                     for (var i = idx + 1; i < kids.length; i++) {
-                        if (kids[i].querySelector && kids[i].querySelector('.section-block[data-section]')) break;
-                        targets.push(kids[i]);
+                        var child = kids[i];
+                        // Stop at next section-block
+                        if (child.querySelector && child.querySelector('.section-block[data-section]')) break;
+                        // Skip the components.html iframe container
+                        if (child.querySelector && child.querySelector('iframe')) {
+                            var iframes = child.querySelectorAll('iframe');
+                            var isToggleScript = false;
+                            iframes.forEach(function(ifr) {
+                                if (ifr.height === '0' || ifr.style.height === '0px') isToggleScript = true;
+                            });
+                            if (isToggleScript) continue;
+                        }
+                        targets.push(child);
                     }
                     if (targets.length === 0) return;
                     var hidden = targets[0].style.display === 'none';
@@ -3948,8 +3970,9 @@ components.html(
         }
         // Init after page loads, and re-init on DOM changes
         setTimeout(initToggles, 1500);
-        setTimeout(initToggles, 4000);
-        var obs = new MutationObserver(function() { setTimeout(initToggles, 600); });
+        setTimeout(initToggles, 3000);
+        setTimeout(initToggles, 6000);
+        var obs = new MutationObserver(function() { setTimeout(initToggles, 800); });
         obs.observe(doc.body, {childList: true, subtree: true});
     })();
     </script>
