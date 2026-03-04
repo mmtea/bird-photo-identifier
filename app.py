@@ -111,20 +111,20 @@ st.markdown("""
     ._container_gzau3_1 { display: none !important; }
     ._profilePreview_gzau3_63 { display: none !important; }
 
-    /* 彻底消除顶部空白 */
+    /* 彻底消除所有间距 */
     .block-container {
-        padding-top: 0 !important;
-        padding-bottom: 0 !important;
-        padding-left: 1rem !important;
-        padding-right: 1rem !important;
+        padding: 0 !important;
         max-width: 100% !important;
     }
-    .stApp > header { height: 0 !important; }
-    .stMainBlockContainer { padding-top: 0 !important; }
-    [data-testid="stAppViewBlockContainer"] { padding-top: 0 !important; }
-    .appview-container { padding-top: 0 !important; }
-    section[data-testid="stSidebar"] + section { padding-top: 0 !important; }
-    .main .block-container { padding-top: 0 !important; }
+    .stApp > header { height: 0 !important; min-height: 0 !important; }
+    .stMainBlockContainer { padding: 0 !important; }
+    [data-testid="stAppViewBlockContainer"] { padding: 0 !important; }
+    [data-testid="stMainBlockContainer"] { padding: 0 !important; }
+    .appview-container { padding: 0 !important; }
+    section[data-testid="stSidebar"] + section { padding: 0 !important; }
+    .main .block-container { padding: 0 !important; }
+    .stApp [data-testid="stHeader"] { height: 0 !important; min-height: 0 !important; display: none !important; }
+    .stApp iframe[height="0"] { display: none !important; }
 
     /* 主标题区域 — eBird 深蓝绿渐变（全宽无圆角） */
     .hero-section {
@@ -133,11 +133,9 @@ st.markdown("""
         overflow: hidden;
         border-radius: 0;
         background: linear-gradient(135deg, #1a3a5c 0%, #2d6a4f 100%);
-        margin: 0 -1rem;
-        padding-left: calc(24px + 1rem);
-        padding-right: calc(24px + 1rem);
+        margin: 0;
         box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-        width: calc(100% + 2rem);
+        width: 100%;
         box-sizing: border-box;
     }
     .hero-icon {
@@ -591,22 +589,24 @@ st.markdown("""
         text-decoration: underline;
     }
 
-    /* Tab 页签 — eBird 风格底部高亮，与 Hero 等宽 */
+    /* Tab 页签 — eBird 风格底部高亮，全宽 */
     .stTabs {
         background: #ffffff;
         border-radius: 0;
         padding: 0;
-        margin: 0 -1rem;
+        margin: 0;
         box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
         border: 1px solid #e0e0e0;
         border-top: none;
+        width: 100%;
+        box-sizing: border-box;
     }
     /* Tab 按钮行 */
     .stTabs [data-baseweb="tab-list"] {
         gap: 0;
         background: #fafafa;
         border-radius: 0;
-        padding: 0 1rem;
+        padding: 0 16px;
         border-bottom: 2px solid #e0e0e0;
     }
     /* 单个 Tab 按钮 */
@@ -642,9 +642,9 @@ st.markdown("""
     .stTabs [data-baseweb="tab-border"] {
         display: none;
     }
-    /* Tab 内容区 — 与 Hero 等宽，内部留 padding */
+    /* Tab 内容区 */
     .stTabs [data-baseweb="tab-panel"] {
-        padding: 20px calc(16px + 1rem) 16px;
+        padding: 16px 16px;
     }
 
     /* PWA 安装提示横幅 */
