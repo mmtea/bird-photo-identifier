@@ -600,14 +600,26 @@ st.markdown("""
         border-top: none;
         width: 100%;
         box-sizing: border-box;
+        overflow: visible !important;
     }
-    /* Tab 按钮行 */
+    /* Tab 按钮行 — 滚动时固定在顶部 */
     .stTabs [data-baseweb="tab-list"] {
         gap: 0;
         background: #fafafa;
         border-radius: 0;
         padding: 0 16px;
         border-bottom: 2px solid #e0e0e0;
+        position: sticky;
+        top: 0;
+        z-index: 999;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+    }
+    /* 确保 sticky 生效：所有父容器 overflow 不能是 hidden */
+    .stApp, .main, .block-container,
+    [data-testid="stAppViewContainer"],
+    [data-testid="stVerticalBlock"],
+    section.main > div {
+        overflow: visible !important;
     }
     /* 单个 Tab 按钮 */
     .stTabs [data-baseweb="tab"] {
