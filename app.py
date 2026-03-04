@@ -123,11 +123,9 @@ st.markdown("""
         padding: 18px 24px;
         position: relative;
         overflow: hidden;
-        border-radius: 0;
+        border-radius: 10px 10px 0 0;
         background: linear-gradient(135deg, #1a3a5c 0%, #2d6a4f 100%);
         margin-bottom: 0;
-        margin-left: -2rem;
-        margin-right: -2rem;
         box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
     }
     .hero-icon {
@@ -540,8 +538,6 @@ st.markdown("""
         background: #ffffff;
         border-radius: 10px;
         padding: 0;
-        margin-left: -2rem;
-        margin-right: -2rem;
         margin-top: 0;
         box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
         border: 1px solid #e0e0e0;
@@ -2503,7 +2499,7 @@ else:
     hero_col, user_col = st.columns([5, 2])
     with hero_col:
         st.markdown(
-            '<div class="hero-section" style="margin-bottom:0;">'
+            '<div class="hero-section" style="margin-bottom:0;border-radius:10px 0 0 0;">'
             '<div style="display:flex;align-items:center;gap:14px;">'
             '<span style="font-size:34px;">🦅</span>'
             '<div>'
@@ -2516,9 +2512,10 @@ else:
     with user_col:
         st.markdown(
             f'<div style="display:flex;align-items:center;justify-content:flex-end;'
-            f'height:100%;padding:8px 0;">'
-            f'<span style="font-size:14px;color:#888;">🐦</span>'
-            f'<span style="font-size:15px;font-weight:600;color:#1a3a5c;margin:0 8px 0 4px;">'
+            f'height:100%;padding:12px 16px;background:linear-gradient(135deg,#1a3a5c 0%,#2d6a4f 100%);'
+            f'border-radius:0 10px 0 0;margin-top:0;">'
+            f'<span style="font-size:14px;">🐦</span>'
+            f'<span style="font-size:14px;font-weight:600;color:#fff;margin:0 8px 0 4px;">'
             f'{nickname_display}</span>'
             f'</div>',
             unsafe_allow_html=True,
