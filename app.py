@@ -707,6 +707,137 @@ st.markdown("""
         margin-top: 8px;
         line-height: 1.5;
     }
+
+    /* ============================================================
+       移动端适配（屏幕宽度 ≤ 768px）
+       ============================================================ */
+    @media screen and (max-width: 768px) {
+        /* Hero 区域紧凑化 */
+        .hero-section {
+            padding: 10px 12px !important;
+        }
+        .hero-section h1 {
+            font-size: 20px !important;
+        }
+        .hero-section p {
+            font-size: 11px !important;
+        }
+
+        /* Tab 页签缩小 */
+        .stTabs [data-baseweb="tab"] {
+            padding: 10px 8px !important;
+            font-size: 14px !important;
+            font-weight: 500 !important;
+        }
+        .stTabs [data-baseweb="tab-list"] {
+            padding: 0 8px !important;
+            overflow-x: auto !important;
+            -webkit-overflow-scrolling: touch;
+        }
+        .stTabs [data-baseweb="tab-panel"] {
+            padding: 12px 10px !important;
+        }
+
+        /* 统计卡片紧凑 */
+        .stat-card {
+            padding: 10px 6px !important;
+        }
+        .stat-value {
+            font-size: 20px !important;
+        }
+        .stat-label {
+            font-size: 10px !important;
+        }
+
+        /* 排行榜紧凑 */
+        .leaderboard-item {
+            padding: 6px 8px !important;
+        }
+        .leaderboard-name {
+            font-size: 12px !important;
+        }
+
+        /* 按钮适配 */
+        .stButton > button {
+            padding: 8px 16px !important;
+            font-size: 13px !important;
+        }
+
+        /* 登录卡片 */
+        .login-title {
+            font-size: 18px !important;
+        }
+        .login-subtitle {
+            font-size: 13px !important;
+        }
+
+        /* 鸟名 */
+        .bird-name {
+            font-size: 16px !important;
+        }
+
+        /* 评分徽章 */
+        .score-pill {
+            font-size: 12px !important;
+            padding: 3px 10px !important;
+        }
+
+        /* 图片圆角 */
+        .stImage img {
+            border-radius: 6px !important;
+        }
+
+        /* PWA 横幅 */
+        .pwa-install-banner {
+            bottom: 10px !important;
+            padding: 10px 16px !important;
+            font-size: 13px !important;
+        }
+    }
+
+    /* 超小屏幕（≤ 480px，如小屏手机） */
+    @media screen and (max-width: 480px) {
+        .hero-section {
+            padding: 8px 10px !important;
+        }
+        .hero-section h1 {
+            font-size: 18px !important;
+        }
+
+        .stTabs [data-baseweb="tab"] {
+            padding: 8px 6px !important;
+            font-size: 13px !important;
+        }
+
+        .stat-card {
+            padding: 8px 4px !important;
+            border-radius: 6px !important;
+        }
+        .stat-value {
+            font-size: 18px !important;
+        }
+        .stat-label {
+            font-size: 9px !important;
+        }
+
+        .leaderboard-header-title {
+            font-size: 14px !important;
+        }
+
+        .bird-name {
+            font-size: 15px !important;
+        }
+        .bird-name-en {
+            font-size: 11px !important;
+        }
+
+        .glass-card {
+            padding: 12px !important;
+        }
+    }
+
+    /* 确保移动端 viewport 正确 */
+    @viewport { width: device-width; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -715,6 +846,7 @@ st.markdown("""
 # ============================================================
 st.markdown("""
 <link rel="manifest" href="./static/manifest.json" crossorigin="use-credentials">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta name="theme-color" content="#1a3a5c">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
