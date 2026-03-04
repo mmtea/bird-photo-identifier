@@ -77,14 +77,21 @@ st.set_page_config(
 # ============================================================
 st.markdown("""
 <style>
+    /* ============================================================
+       eBird 自然风格主题 — 清爽、专业、自然
+       主色：自然绿 #4a7c59  深蓝 #1a3a5c  白色 #ffffff
+       辅色：浅绿 #e8f5e9  暖灰 #f5f5f5  边框灰 #e0e0e0
+       ============================================================ */
+
     /* 全局字体和背景 */
     html, body, [class*="css"] {
-        font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display',
-                     'SF Pro Text', 'Helvetica Neue', 'Inter', Arial, sans-serif;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI',
+                     'Roboto', 'Helvetica Neue', Arial, sans-serif;
         -webkit-font-smoothing: antialiased;
+        color: #333;
     }
     .stApp {
-        background: linear-gradient(180deg, #f5f5f7 0%, #ffffff 100%);
+        background: #f7f7f7 !important;
     }
 
     /* 隐藏 Streamlit 默认元素 */
@@ -107,40 +114,40 @@ st.markdown("""
     /* 减少顶部空白 */
     .block-container {
         padding-top: 1rem !important;
+        padding-left: 2rem !important;
+        padding-right: 2rem !important;
     }
 
-    /* 主标题区域 — 左右突出到边缘 */
+    /* 主标题区域 — eBird 深蓝绿渐变 */
     .hero-section {
-        padding: 16px 20px;
+        padding: 18px 24px;
         position: relative;
         overflow: hidden;
-        border-radius: 16px;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        margin-bottom: 4px;
-        margin-left: -1rem;
-        margin-right: -1rem;
-        box-shadow: 0 4px 20px rgba(102, 126, 234, 0.25);
+        border-radius: 0;
+        background: linear-gradient(135deg, #1a3a5c 0%, #2d6a4f 100%);
+        margin-bottom: 0;
+        margin-left: -2rem;
+        margin-right: -2rem;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
     }
     .hero-icon {
-        font-size: 40px;
-        margin-bottom: 6px;
+        font-size: 36px;
+        margin-bottom: 4px;
         display: block;
-        filter: drop-shadow(0 4px 12px rgba(0,0,0,0.2));
     }
     .hero-title {
-        font-size: 28px;
+        font-size: 26px;
         font-weight: 700;
-        letter-spacing: -0.03em;
+        letter-spacing: -0.02em;
         color: #ffffff;
         margin: 0;
-        line-height: 1.1;
+        line-height: 1.15;
     }
     .hero-subtitle {
-        font-size: 11px;
+        font-size: 12px;
         font-weight: 400;
-        color: rgba(255,255,255,0.75);
+        color: rgba(255,255,255,0.8);
         margin-top: 4px;
-        letter-spacing: -0.01em;
     }
     .hero-features {
         margin-top: 12px;
@@ -151,70 +158,67 @@ st.markdown("""
     .hero-feature-item {
         font-size: 11px;
         color: rgba(255,255,255,0.9);
-        padding: 5px 8px;
-        background: rgba(255,255,255,0.15);
-        backdrop-filter: blur(10px);
-        border-radius: 8px;
-        letter-spacing: -0.01em;
+        padding: 5px 10px;
+        background: rgba(255,255,255,0.12);
+        border-radius: 6px;
         text-align: left;
     }
 
     /* 登录卡片 */
     .login-card {
         text-align: center;
-        padding: 16px 0 8px;
+        padding: 20px 0 10px;
     }
     .login-title {
         font-size: 20px;
         font-weight: 700;
-        color: #1d1d1f;
+        color: #1a3a5c;
         margin: 0 0 4px;
     }
     .login-subtitle {
         font-size: 14px;
-        color: #86868b;
+        color: #666;
         margin: 0;
     }
 
-    /* 识别进度 - 仪式感 */
+    /* 识别进度 */
     .progress-banner {
         text-align: center;
         padding: 12px 16px;
         margin: 8px 0;
-        border-radius: 12px;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border-radius: 8px;
+        background: #4a7c59;
         color: #ffffff;
         font-size: 14px;
         font-weight: 600;
-        letter-spacing: 0.02em;
         animation: pulse-glow 2s ease-in-out infinite;
     }
     @keyframes pulse-glow {
-        0%, 100% { box-shadow: 0 0 8px rgba(102,126,234,0.3); }
-        50% { box-shadow: 0 0 20px rgba(102,126,234,0.6); }
+        0%, 100% { box-shadow: 0 0 6px rgba(74,124,89,0.3); }
+        50% { box-shadow: 0 0 16px rgba(74,124,89,0.5); }
     }
     .progress-done {
         text-align: center;
         padding: 10px 16px;
         margin: 8px 0;
-        border-radius: 12px;
-        background: linear-gradient(135deg, #34c759 0%, #30d158 100%);
+        border-radius: 8px;
+        background: #2d6a4f;
         color: #ffffff;
         font-size: 14px;
         font-weight: 600;
     }
     .results-divider {
         height: 1px;
-        background: linear-gradient(90deg, transparent, rgba(102,126,234,0.3), transparent);
+        background: #e0e0e0;
         margin: 16px 0;
     }
 
-    /* 排行榜区域 - 与 hero 同色系 */
+    /* 排行榜区域 — eBird 深蓝头部 */
     .leaderboard-header {
         text-align: center;
         padding: 12px;
-        border-radius: 16px 16px 0 0;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border-radius: 10px 10px 0 0;
+        background: linear-gradient(135deg, #1a3a5c 0%, #2d6a4f 100%);
         margin-bottom: 0;
     }
     .leaderboard-header-title {
@@ -224,11 +228,10 @@ st.markdown("""
         margin: 0;
     }
     .leaderboard-body {
-        background: rgba(255,255,255,0.85);
-        backdrop-filter: blur(20px);
-        border: 1px solid rgba(0,0,0,0.06);
+        background: #ffffff;
+        border: 1px solid #e0e0e0;
         border-top: none;
-        border-radius: 0 0 16px 16px;
+        border-radius: 0 0 10px 10px;
         padding: 8px;
     }
     .leaderboard-item {
@@ -236,16 +239,16 @@ st.markdown("""
         align-items: center;
         gap: 8px;
         padding: 8px 10px;
-        border-radius: 10px;
+        border-radius: 8px;
         margin-bottom: 4px;
         transition: background 0.2s;
     }
     .leaderboard-item:hover {
-        background: rgba(0,0,0,0.03);
+        background: #f5f5f5;
     }
     .leaderboard-item-current {
-        background: rgba(102,126,234,0.08);
-        border: 1.5px solid rgba(102,126,234,0.25);
+        background: #e8f5e9;
+        border: 1.5px solid #a5d6a7;
     }
     .leaderboard-rank {
         font-size: 16px;
@@ -255,7 +258,7 @@ st.markdown("""
     }
     .leaderboard-rank-num {
         font-size: 12px;
-        color: #86868b;
+        color: #888;
         font-weight: 600;
         width: 24px;
         text-align: center;
@@ -264,76 +267,69 @@ st.markdown("""
     .leaderboard-name {
         font-size: 13px;
         font-weight: 600;
-        color: #1d1d1f;
+        color: #1a3a5c;
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
         margin: 0;
     }
     .leaderboard-name-current {
-        color: #667eea;
+        color: #2d6a4f;
     }
     .leaderboard-stats {
         font-size: 10px;
-        color: #86868b;
+        color: #888;
         margin: 1px 0 0;
     }
 
-    /* 毛玻璃卡片 */
+    /* 白色卡片 — 替代毛玻璃 */
     .glass-card {
-        background: rgba(255, 255, 255, 0.72);
-        backdrop-filter: blur(20px) saturate(180%);
-        -webkit-backdrop-filter: blur(20px) saturate(180%);
-        border: 1px solid rgba(0, 0, 0, 0.08);
-        border-radius: 20px;
-        padding: 24px;
-        margin-bottom: 20px;
-        transition: all 0.3s cubic-bezier(0.25, 0.1, 0.25, 1);
+        background: #ffffff;
+        border: 1px solid #e0e0e0;
+        border-radius: 10px;
+        padding: 20px;
+        margin-bottom: 16px;
+        transition: box-shadow 0.2s ease;
     }
     .glass-card:hover {
-        box-shadow: 0 8px 40px rgba(0, 0, 0, 0.08);
-        transform: translateY(-2px);
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
     }
 
     /* 统计卡片 */
     .stat-card {
-        background: rgba(255, 255, 255, 0.8);
-        backdrop-filter: blur(20px);
-        border: 1px solid rgba(0, 0, 0, 0.06);
-        border-radius: 12px;
-        padding: 12px;
+        background: #ffffff;
+        border: 1px solid #e0e0e0;
+        border-radius: 10px;
+        padding: 14px;
         text-align: center;
     }
     .stat-value {
         font-size: 26px;
         font-weight: 700;
-        color: #1d1d1f;
-        letter-spacing: -0.02em;
+        color: #1a3a5c;
         line-height: 1.2;
     }
     .stat-label {
-        font-size: 13px;
+        font-size: 12px;
         font-weight: 500;
-        color: #86868b;
+        color: #888;
         margin-top: 4px;
         text-transform: uppercase;
-        letter-spacing: 0.02em;
+        letter-spacing: 0.03em;
     }
 
     /* 鸟类结果卡片 */
     .bird-result-card {
-        background: rgba(255, 255, 255, 0.85);
-        backdrop-filter: blur(20px) saturate(180%);
-        border: 1px solid rgba(0, 0, 0, 0.06);
-        border-radius: 20px;
+        background: #ffffff;
+        border: 1px solid #e0e0e0;
+        border-radius: 10px;
         padding: 0;
-        margin-bottom: 24px;
+        margin-bottom: 20px;
         overflow: hidden;
-        transition: all 0.3s cubic-bezier(0.25, 0.1, 0.25, 1);
+        transition: box-shadow 0.2s ease;
     }
     .bird-result-card:hover {
-        box-shadow: 0 12px 48px rgba(0, 0, 0, 0.1);
-        transform: translateY(-3px);
+        box-shadow: 0 6px 24px rgba(0, 0, 0, 0.1);
     }
 
     /* 评分徽章 */
@@ -341,26 +337,25 @@ st.markdown("""
         display: inline-flex;
         align-items: center;
         gap: 6px;
-        padding: 6px 16px;
+        padding: 5px 14px;
         border-radius: 100px;
         font-weight: 600;
-        font-size: 15px;
-        letter-spacing: -0.01em;
+        font-size: 14px;
     }
     .score-excellent {
-        background: linear-gradient(135deg, #34c759, #30d158);
+        background: #2d6a4f;
         color: white;
     }
     .score-good {
-        background: linear-gradient(135deg, #007aff, #0a84ff);
+        background: #4a7c59;
         color: white;
     }
     .score-fair {
-        background: linear-gradient(135deg, #ff9500, #ff9f0a);
+        background: #e8a317;
         color: white;
     }
     .score-poor {
-        background: linear-gradient(135deg, #ff3b30, #ff453a);
+        background: #c0392b;
         color: white;
     }
 
@@ -368,20 +363,19 @@ st.markdown("""
     .taxonomy-pill {
         display: inline-flex;
         align-items: center;
-        padding: 4px 12px;
+        padding: 3px 10px;
         border-radius: 100px;
         font-size: 12px;
         font-weight: 500;
         margin-right: 6px;
-        letter-spacing: -0.01em;
     }
     .order-pill {
-        background: rgba(0, 122, 255, 0.1);
-        color: #007aff;
+        background: #e3f2fd;
+        color: #1565c0;
     }
     .family-pill {
-        background: rgba(52, 199, 89, 0.1);
-        color: #34c759;
+        background: #e8f5e9;
+        color: #2e7d32;
     }
 
     /* 置信度指示器 */
@@ -392,9 +386,9 @@ st.markdown("""
         border-radius: 50%;
         margin-right: 6px;
     }
-    .confidence-high { background: #34c759; }
-    .confidence-medium { background: #ff9500; }
-    .confidence-low { background: #ff3b30; }
+    .confidence-high { background: #2d6a4f; }
+    .confidence-medium { background: #e8a317; }
+    .confidence-low { background: #c0392b; }
 
     /* 信息行 */
     .info-row {
@@ -402,107 +396,112 @@ st.markdown("""
         align-items: center;
         gap: 6px;
         font-size: 14px;
-        color: #6e6e73;
+        color: #555;
         margin: 4px 0;
-        letter-spacing: -0.01em;
     }
     .info-row .label {
-        color: #86868b;
+        color: #888;
         font-weight: 500;
     }
     .info-row .value {
-        color: #1d1d1f;
+        color: #1a3a5c;
     }
 
     /* 鸟名标题 */
     .bird-name {
         font-size: 18px;
         font-weight: 700;
-        color: #1d1d1f;
-        letter-spacing: -0.02em;
+        color: #1a3a5c;
         margin: 0 0 2px 0;
         line-height: 1.2;
     }
     .bird-name-en {
         font-size: 13px;
         font-weight: 400;
-        color: #86868b;
+        color: #888;
         margin: 0 0 8px 0;
-        letter-spacing: -0.01em;
     }
 
     /* 评分详情 */
     .score-detail {
         font-size: 14px;
-        color: #6e6e73;
+        color: #555;
         font-style: italic;
         margin-top: 8px;
         padding: 8px 12px;
-        background: rgba(0, 0, 0, 0.03);
-        border-radius: 10px;
+        background: #f5f5f5;
+        border-radius: 8px;
     }
 
     /* 上传区域 */
     .stFileUploader > div {
-        border-radius: 16px !important;
-        border: 2px dashed rgba(0, 0, 0, 0.1) !important;
-        background: rgba(255, 255, 255, 0.6) !important;
+        border-radius: 10px !important;
+        border: 2px dashed #c8e6c9 !important;
+        background: #fafff9 !important;
     }
     .stFileUploader > div:hover {
-        border-color: #007aff !important;
-        background: rgba(0, 122, 255, 0.03) !important;
+        border-color: #4a7c59 !important;
+        background: #f1f8e9 !important;
     }
 
-    /* 按钮样式 */
+    /* 按钮样式 — eBird 绿色实心 */
     .stButton > button {
-        border-radius: 14px !important;
+        border-radius: 6px !important;
         font-weight: 600 !important;
-        letter-spacing: -0.01em !important;
-        padding: 12px 24px !important;
+        padding: 10px 24px !important;
         transition: all 0.2s ease !important;
         border: none !important;
     }
     .stButton > button[kind="primary"] {
-        background: linear-gradient(135deg, #007aff, #0a84ff) !important;
+        background: #4a7c59 !important;
         color: white !important;
     }
     .stButton > button[kind="primary"]:hover {
-        box-shadow: 0 4px 16px rgba(0, 122, 255, 0.4) !important;
-        transform: translateY(-1px) !important;
+        background: #3d6b4a !important;
+        box-shadow: 0 2px 8px rgba(74,124,89,0.3) !important;
     }
     .stButton > button[kind="secondary"] {
-        background: rgba(0, 0, 0, 0.05) !important;
-        color: #1d1d1f !important;
+        background: #f5f5f5 !important;
+        color: #1a3a5c !important;
+        border: 1px solid #e0e0e0 !important;
+    }
+    .stButton > button[kind="secondary"]:hover {
+        background: #eeeeee !important;
     }
 
     /* 下载按钮 */
     .stDownloadButton > button {
-        border-radius: 14px !important;
+        border-radius: 6px !important;
         font-weight: 600 !important;
-        background: linear-gradient(135deg, #34c759, #30d158) !important;
+        background: #2d6a4f !important;
         color: white !important;
         border: none !important;
-        padding: 12px 24px !important;
+        padding: 10px 24px !important;
     }
     .stDownloadButton > button:hover {
-        box-shadow: 0 4px 16px rgba(52, 199, 89, 0.4) !important;
+        background: #245a42 !important;
+        box-shadow: 0 2px 8px rgba(45,106,79,0.3) !important;
     }
 
     /* 输入框 */
     .stTextInput > div > div {
-        border-radius: 12px !important;
-        border: 1px solid rgba(0, 0, 0, 0.1) !important;
+        border-radius: 6px !important;
+        border: 1px solid #ccc !important;
+    }
+    .stTextInput > div > div:focus-within {
+        border-color: #4a7c59 !important;
+        box-shadow: 0 0 0 2px rgba(74,124,89,0.15) !important;
     }
 
     /* 进度条 */
     .stProgress > div > div {
         border-radius: 100px !important;
-        background: linear-gradient(90deg, #007aff, #5ac8fa) !important;
+        background: linear-gradient(90deg, #4a7c59, #81c784) !important;
     }
 
     /* Expander */
     .streamlit-expanderHeader {
-        border-radius: 12px !important;
+        border-radius: 8px !important;
         font-weight: 600 !important;
     }
 
@@ -510,82 +509,76 @@ st.markdown("""
     hr {
         border: none;
         height: 1px;
-        background: rgba(0, 0, 0, 0.06);
+        background: #e0e0e0;
         margin: 10px 0;
     }
 
     /* 图片圆角 */
     .stImage img {
-        border-radius: 14px;
+        border-radius: 8px;
     }
 
     /* 页脚 */
     .app-footer {
         text-align: center;
-        padding: 24px 0 12px;
-        color: #86868b;
+        padding: 20px 0 12px;
+        color: #888;
         font-size: 13px;
-        letter-spacing: -0.01em;
-        border-top: 1px solid rgba(0,0,0,0.06);
+        border-top: 1px solid #e0e0e0;
         margin-top: 24px;
     }
     .app-footer a {
-        color: #007aff;
+        color: #4a7c59;
         text-decoration: none;
     }
-
-    /* 页面背景 — 淡灰蓝底色，衬托白色卡片 */
-    .stApp {
-        background: linear-gradient(180deg, #f0f2f5 0%, #e8ecf1 100%) !important;
+    .app-footer a:hover {
+        text-decoration: underline;
     }
 
-    /* 内容区左右对称缩进，标题区块突出 */
-    .block-container {
-        padding-left: 2rem !important;
-        padding-right: 2rem !important;
-    }
-
-    /* Tab 页签美化 — Apple 风格分段控件 */
+    /* Tab 页签 — eBird 风格底部高亮 */
     .stTabs {
-        background: rgba(255, 255, 255, 0.92);
-        backdrop-filter: blur(20px) saturate(180%);
-        -webkit-backdrop-filter: blur(20px) saturate(180%);
-        border-radius: 16px;
-        padding: 4px 8px 0;
-        margin-left: -1rem;
-        margin-right: -1rem;
-        margin-top: 12px;
-        box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
-        border: 1px solid rgba(0, 0, 0, 0.06);
+        background: #ffffff;
+        border-radius: 10px;
+        padding: 0;
+        margin-left: -2rem;
+        margin-right: -2rem;
+        margin-top: 0;
+        box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+        border: 1px solid #e0e0e0;
     }
     /* Tab 按钮行 */
     .stTabs [data-baseweb="tab-list"] {
         gap: 0;
-        background: rgba(0, 0, 0, 0.03);
-        border-radius: 12px;
-        padding: 3px;
+        background: #fafafa;
+        border-radius: 10px 10px 0 0;
+        padding: 0;
+        border-bottom: 2px solid #e0e0e0;
     }
     /* 单个 Tab 按钮 */
     .stTabs [data-baseweb="tab"] {
-        border-radius: 10px;
-        padding: 8px 12px;
-        font-size: 13px;
-        font-weight: 600;
-        color: #86868b;
+        border-radius: 0;
+        padding: 12px 16px;
+        font-size: 14px;
+        font-weight: 500;
+        color: #666;
         border: none;
         background: transparent;
-        transition: all 0.2s ease;
+        transition: color 0.2s ease;
         white-space: nowrap;
+        border-bottom: 3px solid transparent;
+        margin-bottom: -2px;
     }
     .stTabs [data-baseweb="tab"]:hover {
-        color: #1d1d1f;
-        background: rgba(255, 255, 255, 0.6);
+        color: #1a3a5c;
+        background: transparent;
     }
-    /* 选中的 Tab */
+    /* 选中的 Tab — 绿色底部边框 */
     .stTabs [aria-selected="true"] {
-        background: #ffffff !important;
-        color: #667eea !important;
-        box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+        background: transparent !important;
+        color: #4a7c59 !important;
+        font-weight: 600 !important;
+        border-bottom: 3px solid #4a7c59 !important;
+        box-shadow: none !important;
     }
     /* 隐藏默认下划线 */
     .stTabs [data-baseweb="tab-highlight"] {
@@ -596,7 +589,7 @@ st.markdown("""
     }
     /* Tab 内容区 */
     .stTabs [data-baseweb="tab-panel"] {
-        padding: 16px 12px 12px;
+        padding: 20px 16px 16px;
     }
 
     /* PWA 安装提示横幅 */
@@ -607,11 +600,11 @@ st.markdown("""
         left: 50%;
         transform: translateX(-50%);
         z-index: 9999;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        background: linear-gradient(135deg, #1a3a5c 0%, #2d6a4f 100%);
         color: #fff;
         padding: 14px 24px;
-        border-radius: 16px;
-        box-shadow: 0 8px 32px rgba(102,126,234,0.4);
+        border-radius: 10px;
+        box-shadow: 0 4px 20px rgba(26,58,92,0.3);
         font-size: 14px;
         font-weight: 600;
         text-align: center;
@@ -631,7 +624,7 @@ st.markdown("""
     }
     .pwa-install-banner button {
         border: none;
-        border-radius: 10px;
+        border-radius: 6px;
         padding: 8px 20px;
         font-size: 13px;
         font-weight: 600;
@@ -640,10 +633,10 @@ st.markdown("""
     }
     .pwa-install-btn {
         background: #fff;
-        color: #667eea;
+        color: #1a3a5c;
     }
     .pwa-install-btn:hover {
-        background: #f0f0f5;
+        background: #f0f0f0;
     }
     .pwa-dismiss-btn {
         background: rgba(255,255,255,0.2);
@@ -667,7 +660,7 @@ st.markdown("""
 # ============================================================
 st.markdown("""
 <link rel="manifest" href="./static/manifest.json" crossorigin="use-credentials">
-<meta name="theme-color" content="#667eea">
+<meta name="theme-color" content="#1a3a5c">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="影禽">
@@ -686,7 +679,7 @@ st.markdown("""
 
         var tags = [
             {tag:'link', attrs:{rel:'manifest', href:'./static/manifest.json', crossOrigin:'use-credentials'}},
-            {tag:'meta', attrs:{name:'theme-color', content:'#667eea'}},
+            {tag:'meta', attrs:{name:'theme-color', content:'#1a3a5c'}},
             {tag:'meta', attrs:{name:'apple-mobile-web-app-capable', content:'yes'}},
             {tag:'meta', attrs:{name:'apple-mobile-web-app-status-bar-style', content:'black-translucent'}},
             {tag:'meta', attrs:{name:'apple-mobile-web-app-title', content:'影禽'}},
@@ -2474,10 +2467,10 @@ if not st.session_state["user_nickname"]:
     st.markdown(
         '<div class="hero-section">'
         '<div style="display:flex;align-items:center;gap:14px;">'
-        '<span style="font-size:38px;filter:drop-shadow(0 2px 8px rgba(0,0,0,0.2));">🦅</span>'
+        '<span style="font-size:34px;">🦅</span>'
         '<div>'
-        '<h1 style="font-size:24px;font-weight:800;margin:0;color:#fff;letter-spacing:-0.03em;">影禽</h1>'
-        '<p style="font-size:12px;color:rgba(255,255,255,0.8);margin:2px 0 0;">BirdEye · 发现身边的鸟 · AI 识别与摄影评分</p>'
+        '<h1 style="font-size:24px;font-weight:700;margin:0;color:#fff;letter-spacing:-0.02em;">影禽</h1>'
+        '<p style="font-size:12px;color:rgba(255,255,255,0.85);margin:2px 0 0;">BirdEye · 发现身边的鸟 · AI 识别与摄影评分</p>'
         '</div>'
         '</div></div>',
         unsafe_allow_html=True,
@@ -2512,10 +2505,10 @@ else:
         st.markdown(
             '<div class="hero-section" style="margin-bottom:0;">'
             '<div style="display:flex;align-items:center;gap:14px;">'
-            '<span style="font-size:38px;filter:drop-shadow(0 2px 8px rgba(0,0,0,0.2));">🦅</span>'
+            '<span style="font-size:34px;">🦅</span>'
             '<div>'
-            '<h1 style="font-size:24px;font-weight:800;margin:0;color:#fff;letter-spacing:-0.03em;">影禽</h1>'
-            '<p style="font-size:12px;color:rgba(255,255,255,0.8);margin:2px 0 0;">BirdEye · 发现身边的鸟 · AI 识别与摄影评分</p>'
+            '<h1 style="font-size:24px;font-weight:700;margin:0;color:#fff;letter-spacing:-0.02em;">影禽</h1>'
+            '<p style="font-size:12px;color:rgba(255,255,255,0.85);margin:2px 0 0;">BirdEye · 发现身边的鸟 · AI 识别与摄影评分</p>'
             '</div>'
             '</div></div>',
             unsafe_allow_html=True,
@@ -2524,8 +2517,8 @@ else:
         st.markdown(
             f'<div style="display:flex;align-items:center;justify-content:flex-end;'
             f'height:100%;padding:8px 0;">'
-            f'<span style="font-size:14px;color:#86868b;">🐦</span>'
-            f'<span style="font-size:15px;font-weight:600;color:#1d1d1f;margin:0 8px 0 4px;">'
+            f'<span style="font-size:14px;color:#888;">🐦</span>'
+            f'<span style="font-size:15px;font-weight:600;color:#1a3a5c;margin:0 8px 0 4px;">'
             f'{nickname_display}</span>'
             f'</div>',
             unsafe_allow_html=True,
@@ -2571,7 +2564,7 @@ with tab_explore:
         # 浏览器 Geolocation 自动定位（仅首次）
         if not st.session_state["geo_detected"]:
             geo_js = """
-            <div id="geo-status" style="font-size:12px;color:#86868b;padding:4px 0;">📍 正在获取定位...</div>
+            <div id="geo-status" style="font-size:12px;color:#888;padding:4px 0;">📍 正在获取定位...</div>
             <script>
             (function() {
                 if (navigator.geolocation) {
@@ -2705,13 +2698,13 @@ with tab_explore:
 
             if weather:
                 st.markdown(
-                    f'<div style="background:rgba(102,126,234,0.08); padding:10px 14px; '
+                    f'<div style="background:#e8f5e9; padding:10px 14px; '
                     f'border-radius:12px; margin-bottom:8px;">'
                     f'<span style="font-size:13px;">'
                     f'{weather.get("emoji", "🌡️")} <b>{weather.get("description", "")}</b> '
                     f'{weather.get("temperature", 0)}°C · 风速 {weather.get("windspeed", 0)}km/h'
                     f'</span><br>'
-                    f'<span style="font-size:12px; color:#86868b;">'
+                    f'<span style="font-size:12px; color:#888;">'
                     f'观鸟适宜度：{weather.get("birding_emoji", "")} {weather.get("birding_score", "")}'
                     f'</span></div>',
                     unsafe_allow_html=True,
@@ -2746,10 +2739,10 @@ with tab_explore:
 
                 type_label = "稀有鸟种" if is_notable_mode else "热门鸟种"
                 st.markdown(
-                    f'<p style="font-size:12px; color:#86868b; margin:4px 0 8px;">'
-                    f'📍 {location_query}周边 {selected_range_label} · 近 7 天发现 <b style="color:#1d1d1f;">'
+                    f'<p style="font-size:12px; color:#888; margin:4px 0 8px;">'
+                    f'📍 {location_query}周边 {selected_range_label} · 近 7 天发现 <b style="color:#1a3a5c;">'
                     f'{total_count}</b> 种{type_label}'
-                    f'{"，其中 <b style=color:#667eea;>" + str(new_count) + "</b> 种你还没拍过 🎯" if new_count > 0 else ""}'
+                    f'{"，其中 <b style=color:#4a7c59;>" + str(new_count) + "</b> 种你还没拍过 🎯" if new_count > 0 else ""}'
                     f'</p>',
                     unsafe_allow_html=True,
                 )
@@ -2758,7 +2751,7 @@ with tab_explore:
                 for bird in recommendations[:15]:
                     new_badge_html = (
                         '<span style="position:absolute; top:6px; right:6px; '
-                        'background:#667eea; color:#fff; font-size:9px; '
+                        'background:#4a7c59; color:#fff; font-size:9px; '
                         'padding:2px 6px; border-radius:6px; font-weight:600; '
                         'letter-spacing:0.02em;">新种</span>'
                         if bird["is_new_species"] else ""
@@ -2776,7 +2769,7 @@ with tab_explore:
                             f'loading="lazy" '
                             f'onerror="this.parentElement.innerHTML='
                             f"'<div style=\\'width:100%;height:140px;background:"
-                            f"linear-gradient(135deg,#667eea,#764ba2);border-radius:"
+                            f"linear-gradient(135deg,#1a3a5c,#2d6a4f);border-radius:"
                             f"10px 10px 0 0;display:flex;align-items:center;"
                             f"justify-content:center;font-size:40px;\\'>🐦</div>'"
                             f'" />'
@@ -2784,7 +2777,7 @@ with tab_explore:
                     else:
                         card_img_html = (
                             '<div style="width:100%;height:140px;'
-                            'background:linear-gradient(135deg,#667eea,#764ba2);'
+                            'background:linear-gradient(135deg,#1a3a5c,#2d6a4f);'
                             'border-radius:10px 10px 0 0;display:flex;'
                             'align-items:center;justify-content:center;'
                             'font-size:40px;">🐦</div>'
@@ -2801,13 +2794,13 @@ with tab_explore:
                         f'{new_badge_html}'
                         f'{card_img_html}'
                         f'<div style="padding:8px 10px;">'
-                        f'<div style="font-size:13px;font-weight:600;color:#1d1d1f;'
+                        f'<div style="font-size:13px;font-weight:600;color:#1a3a5c;'
                         f'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'
                         f'{bird["chinese_name"]}</div>'
-                        f'<div style="font-size:10px;color:#86868b;margin-top:2px;'
+                        f'<div style="font-size:10px;color:#888;margin-top:2px;'
                         f'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'
                         f'{bird.get("english_name", "")}</div>'
-                        f'<div style="font-size:10px;color:#86868b;margin-top:1px;'
+                        f'<div style="font-size:10px;color:#888;margin-top:1px;'
                         f'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'
                         f'📍 {bird.get("location", "未知")}</div>'
                         f'<div style="font-size:10px;color:#aaa;margin-top:1px;">'
@@ -2841,9 +2834,9 @@ with tab_upload:
 
         with upload_col:
             st.markdown(
-                '<p style="font-size:13px;font-weight:600;color:#1d1d1f;margin:0 0 6px;">'
+                '<p style="font-size:13px;font-weight:600;color:#1a3a5c;margin:0 0 6px;">'
                 '📷 方式一：上传照片识别</p>'
-                f'<p style="font-size:11px;color:#86868b;margin:0 0 8px;">'
+                f'<p style="font-size:11px;color:#888;margin:0 0 8px;">'
                 f'支持 JPG、PNG、RAW 等格式，每次最多 {MAX_PHOTOS_PER_SESSION} 张</p>',
                 unsafe_allow_html=True,
             )
@@ -2859,8 +2852,8 @@ with tab_upload:
                     st.warning(f"每次最多 {MAX_PHOTOS_PER_SESSION} 张，已自动截取。")
                     uploaded_files = uploaded_files[:MAX_PHOTOS_PER_SESSION]
                 st.markdown(
-                    f'<p style="font-size:14px; color:#86868b; margin:4px 0;">已选择 '
-                    f'<b style="color:#1d1d1f;">{len(uploaded_files)}</b> 张照片</p>',
+                    f'<p style="font-size:14px; color:#888; margin:4px 0;">已选择 '
+                    f'<b style="color:#1a3a5c;">{len(uploaded_files)}</b> 张照片</p>',
                     unsafe_allow_html=True,
                 )
             else:
@@ -2870,7 +2863,7 @@ with tab_upload:
                     '<div style="flex:1;background:linear-gradient(135deg,#e8f4fd,#d1ecf9);'
                     'border-radius:10px;padding:16px 8px;text-align:center;">'
                     '<div style="font-size:32px;">🦅</div>'
-                    '<p style="font-size:10px;color:#667eea;margin:4px 0 0;font-weight:600;">猛禽</p>'
+                    '<p style="font-size:10px;color:#4a7c59;margin:4px 0 0;font-weight:600;">猛禽</p>'
                     '</div>'
                     '<div style="flex:1;background:linear-gradient(135deg,#fef3e2,#fde8c8);'
                     'border-radius:10px;padding:16px 8px;text-align:center;">'
@@ -2907,9 +2900,9 @@ with tab_upload:
 
         with import_col:
             st.markdown(
-                '<p style="font-size:13px;font-weight:600;color:#1d1d1f;margin:0 0 6px;">'
+                '<p style="font-size:13px;font-weight:600;color:#1a3a5c;margin:0 0 6px;">'
                 '📥 方式二：导入观鸟记录</p>'
-                '<p style="font-size:11px;color:#86868b;margin:0 0 8px;">'
+                '<p style="font-size:11px;color:#888;margin:0 0 8px;">'
                 '导入 eBird / 观鸟中心的历史记录，让推荐更精准</p>',
                 unsafe_allow_html=True,
             )
@@ -2924,9 +2917,9 @@ with tab_upload:
                     st.markdown(
                         f'<div style="background:rgba(52,199,89,0.08); padding:8px 12px; '
                         f'border-radius:10px; margin-bottom:8px;">'
-                        f'<span style="font-size:12px; font-weight:600; color:#1d1d1f;">'
+                        f'<span style="font-size:12px; font-weight:600; color:#1a3a5c;">'
                         f'✅ 已同步 {imported_total} 种</span>'
-                        f'<span style="font-size:10px; color:#86868b; margin-left:8px;">'
+                        f'<span style="font-size:10px; color:#888; margin-left:8px;">'
                         f'📅 {last_sync_date}</span></div>',
                         unsafe_allow_html=True,
                     )
@@ -2941,22 +2934,22 @@ with tab_upload:
 
                 if import_source == "eBird":
                     st.markdown(
-                        '<div style="background:rgba(102,126,234,0.06); padding:6px 10px; '
+                        '<div style="background:#f1f8e9; padding:6px 10px; '
                         'border-radius:8px; margin:4px 0 6px;">'
-                        '<p style="font-size:11px; color:#86868b; margin:0; line-height:1.5;">'
+                        '<p style="font-size:11px; color:#888; margin:0; line-height:1.5;">'
                         '1. 打开 <a href="https://ebird.org/downloadMyData" target="_blank" '
-                        'style="color:#667eea;">ebird.org/downloadMyData</a><br>'
+                        'style="color:#4a7c59;">ebird.org/downloadMyData</a><br>'
                         '2. 登录并点击 "Download My Data"<br>'
                         '3. 上传下载的 CSV 文件</p></div>',
                         unsafe_allow_html=True,
                     )
                 elif import_source == "中国观鸟记录中心":
                     st.markdown(
-                        '<div style="background:rgba(102,126,234,0.06); padding:6px 10px; '
+                        '<div style="background:#f1f8e9; padding:6px 10px; '
                         'border-radius:8px; margin:4px 0 6px;">'
-                        '<p style="font-size:11px; color:#86868b; margin:0; line-height:1.5;">'
+                        '<p style="font-size:11px; color:#888; margin:0; line-height:1.5;">'
                         '1. 打开 <a href="https://www.birdreport.cn/" target="_blank" '
-                        'style="color:#667eea;">birdreport.cn</a> 并登录<br>'
+                        'style="color:#4a7c59;">birdreport.cn</a> 并登录<br>'
                         '2. 进入「我的记录」导出 CSV<br>'
                         '3. 上传下载的 CSV 文件</p></div>',
                         unsafe_allow_html=True,
@@ -2981,7 +2974,7 @@ with tab_upload:
 
                     if parsed_species:
                         st.markdown(
-                            f'<p style="font-size:12px; color:#1d1d1f; margin:4px 0;">'
+                            f'<p style="font-size:12px; color:#1a3a5c; margin:4px 0;">'
                             f'📋 检测到 <b>{len(parsed_species)}</b> 个鸟种</p>',
                             unsafe_allow_html=True,
                         )
@@ -2992,7 +2985,7 @@ with tab_upload:
                                 preview_names.append(name)
                         if preview_names:
                             st.markdown(
-                                f'<p style="font-size:11px; color:#86868b; margin:2px 0 6px;">'
+                                f'<p style="font-size:11px; color:#888; margin:2px 0 6px;">'
                                 f'{" · ".join(preview_names)}'
                                 f'{"…" if len(parsed_species) > 8 else ""}</p>',
                                 unsafe_allow_html=True,
@@ -3422,7 +3415,7 @@ with tab_upload:
                             f'{score_emoji} {score}</span>'
                             f'&nbsp;'
                             f'<span class="confidence-dot {confidence_class}"></span>'
-                            f'<span style="font-size:12px; color:#86868b;">{confidence}</span>',
+                            f'<span style="font-size:12px; color:#888;">{confidence}</span>',
                             unsafe_allow_html=True,
                         )
     
@@ -3430,7 +3423,7 @@ with tab_upload:
                         if basis:
                             st.markdown(
                                 f'<div style="font-size:12px; color:#6e6e73; margin-top:6px;">'
-                                f'<b style="color:#86868b;">识别依据</b> {basis}</div>',
+                                f'<b style="color:#888;">识别依据</b> {basis}</div>',
                                 unsafe_allow_html=True,
                             )
     
@@ -3447,7 +3440,7 @@ with tab_upload:
                         if shoot_date and len(shoot_date) >= 8:
                             formatted_date = f"{shoot_date[:4]}.{shoot_date[4:6]}.{shoot_date[6:8]}"
                             st.markdown(
-                                f'<div style="font-size:12px; color:#86868b; margin-top:4px;">'
+                                f'<div style="font-size:12px; color:#888; margin-top:4px;">'
                                 f'📅 {formatted_date}</div>',
                                 unsafe_allow_html=True,
                             )
@@ -3464,19 +3457,19 @@ with tab_upload:
                         for dim_name, dim_score, dim_max in dimensions:
                             percentage = (dim_score / dim_max * 100) if dim_max > 0 else 0
                             if percentage >= 85:
-                                bar_color = "#34c759"
+                                bar_color = "#2d6a4f"
                             elif percentage >= 70:
-                                bar_color = "#007aff"
+                                bar_color = "#4a7c59"
                             elif percentage >= 50:
-                                bar_color = "#ff9500"
+                                bar_color = "#e8a317"
                             else:
-                                bar_color = "#ff3b30"
+                                bar_color = "#c0392b"
                             bars_html += (
                                 f'<div style="display:flex; align-items:center; margin:2px 0; font-size:11px;">'
-                                f'<span style="width:28px; color:#86868b; font-weight:500; flex-shrink:0;">{dim_name}</span>'
+                                f'<span style="width:28px; color:#888; font-weight:500; flex-shrink:0;">{dim_name}</span>'
                                 f'<div style="flex:1; height:6px; background:rgba(0,0,0,0.06); border-radius:3px; margin:0 4px; overflow:hidden;">'
                                 f'<div style="width:{percentage}%; height:100%; background:{bar_color}; border-radius:3px;"></div></div>'
-                                f'<span style="width:32px; text-align:right; color:#1d1d1f; font-weight:600; font-size:11px;">{dim_score}/{dim_max}</span>'
+                                f'<span style="width:32px; text-align:right; color:#1a3a5c; font-weight:600; font-size:11px;">{dim_score}/{dim_max}</span>'
                                 f'</div>'
                             )
                         st.markdown(
@@ -3539,7 +3532,7 @@ with tab_gallery:
                     else:
                         img_html = (
                             '<div style="width:100%;height:160px;'
-                            'background:linear-gradient(135deg,#667eea,#764ba2);'
+                            'background:linear-gradient(135deg,#1a3a5c,#2d6a4f);'
                             'border-radius:10px 10px 0 0;display:flex;'
                             'align-items:center;justify-content:center;'
                             'font-size:40px;">📷</div>'
@@ -3551,12 +3544,12 @@ with tab_gallery:
                         f'flex-shrink:0;overflow:hidden;">'
                         f'{img_html}'
                         f'<div style="padding:8px 10px;">'
-                        f'<div style="font-size:13px;font-weight:600;color:#1d1d1f;'
+                        f'<div style="font-size:13px;font-weight:600;color:#1a3a5c;'
                         f'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'
                         f'{bird_name}</div>'
                         f'<div style="display:flex;align-items:center;justify-content:space-between;'
                         f'margin-top:4px;">'
-                        f'<span style="font-size:11px;color:#86868b;">📷 {photographer}</span>'
+                        f'<span style="font-size:11px;color:#888;">📷 {photographer}</span>'
                         f'<span class="score-pill score-{score_color}" '
                         f'style="font-size:10px;padding:1px 6px;">'
                         f'{get_score_emoji(photo_score)} {photo_score}</span>'
@@ -3571,7 +3564,7 @@ with tab_gallery:
                 )
         else:
             st.markdown(
-                '<p style="text-align:center; color:#86868b; font-size:13px; padding:16px 0;">'
+                '<p style="text-align:center; color:#888; font-size:13px; padding:16px 0;">'
                 '还没有佳作，上传照片成为第一个吧 📷</p>',
                 unsafe_allow_html=True,
             )
@@ -3655,14 +3648,14 @@ with tab_history:
                                         st.markdown(
                                             '<div style="height:80px; background:rgba(0,0,0,0.04); '
                                             'border-radius:10px; display:flex; align-items:center; '
-                                            'justify-content:center; color:#86868b; font-size:20px;">🐦</div>',
+                                            'justify-content:center; color:#888; font-size:20px;">🐦</div>',
                                             unsafe_allow_html=True,
                                         )
 
                                     hist_score = record.get("score", 0)
                                     hist_score_color = get_score_color(hist_score)
                                     st.markdown(
-                                        f'<p style="font-size:13px; font-weight:600; color:#1d1d1f; '
+                                        f'<p style="font-size:13px; font-weight:600; color:#1a3a5c; '
                                         f'margin:4px 0 2px; line-height:1.2;">{record.get("chinese_name", "未知")}</p>'
                                         f'<span class="score-pill score-{hist_score_color}" '
                                         f'style="font-size:11px; padding:2px 8px;">'
@@ -3675,7 +3668,7 @@ with tab_history:
                                         try:
                                             date_display = created_at[:10]
                                             st.markdown(
-                                                f'<p style="font-size:11px; color:#86868b; margin:2px 0 8px;">'
+                                                f'<p style="font-size:11px; color:#888; margin:2px 0 8px;">'
                                                 f'📅 {date_display}</p>',
                                                 unsafe_allow_html=True,
                                             )
@@ -3718,13 +3711,13 @@ with tab_history:
 
                             tags_html += (
                                 f'<div style="display:inline-flex; align-items:center; gap:4px; '
-                                f'padding:6px 12px; margin:3px; background:rgba(102,126,234,0.08); '
+                                f'padding:6px 12px; margin:3px; background:#e8f5e9; '
                                 f'border-radius:20px; font-size:13px;">'
-                                f'<span style="font-weight:600; color:#1d1d1f;">{bird_name}</span>'
+                                f'<span style="font-weight:600; color:#1a3a5c;">{bird_name}</span>'
                             )
                             if subtitle:
                                 tags_html += (
-                                    f'<span style="font-size:11px; color:#86868b; '
+                                    f'<span style="font-size:11px; color:#888; '
                                     f'font-style:italic;">{subtitle}</span>'
                                 )
                             tags_html += '</div>'
@@ -3748,7 +3741,7 @@ with tab_history:
                                 st.rerun()
             else:
                 st.markdown(
-                    '<p style="text-align:center; color:#86868b; font-size:14px; padding:20px 0;">'
+                    '<p style="text-align:center; color:#888; font-size:14px; padding:20px 0;">'
                     '还没有识别记录，上传照片开始你的观鸟之旅吧 🐦</p>',
                     unsafe_allow_html=True,
                 )
@@ -3802,7 +3795,7 @@ with tab_rank:
         else:
             st.markdown(
                 '<div class="leaderboard-body">'
-                '<p style="text-align:center; color:#86868b; font-size:13px; padding:20px 0;">'
+                '<p style="text-align:center; color:#888; font-size:13px; padding:20px 0;">'
                 '暂无排行数据</p>'
                 '</div>',
                 unsafe_allow_html=True,
