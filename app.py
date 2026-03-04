@@ -2511,7 +2511,7 @@ def save_record_to_db(supabase_client, user_nickname: str, result: dict,
     def _do_post(payload):
         post_data = json.dumps(payload).encode("utf-8")
         post_req = urllib.request.Request(url, data=post_data, headers=headers, method="POST")
-        with urllib.request.urlopen(post_req, timeout=30) as resp:
+        with urllib.request.urlopen(post_req, timeout=60) as resp:
             status_code = resp.status
             resp_body = resp.read().decode("utf-8", errors="replace")
             record_id = None
@@ -3565,7 +3565,7 @@ with tab_upload:
                         thumb_b64 = generate_thumbnail_base64(image_bytes, fname)
                         # 生成大图 base64（1200px 宽），如果失败不影响上传
                         try:
-                            full_img_b64 = generate_thumbnail_base64(image_bytes, fname, max_width=1200)
+                            full_img_b64 = generate_thumbnail_base64(image_bytes, fname, max_width=800)
                         except Exception:
                             full_img_b64 = ""
                         db_saved, db_error, db_record_id = save_record_to_db(
