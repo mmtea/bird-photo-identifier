@@ -545,85 +545,8 @@ st.markdown("""
         padding-right: 2rem !important;
     }
 
-    /* 区块容器 — 统一卡片风格，左右突出到边缘 */
-    .section-block {
-        background: rgba(255, 255, 255, 0.92);
-        backdrop-filter: blur(20px) saturate(180%);
-        -webkit-backdrop-filter: blur(20px) saturate(180%);
-        border: 1px solid rgba(0, 0, 0, 0.06);
-        border-radius: 20px;
-        padding: 16px 20px 12px;
-        margin-top: 20px;
-        margin-bottom: 8px;
-        margin-left: -1rem;
-        margin-right: -1rem;
-        box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
-        cursor: pointer;
-        user-select: none;
-        position: relative;
-    }
-    .section-block .section-header {
-        position: relative;
-    }
-    /* 收起/展开箭头 */
-    .section-toggle {
-        position: absolute;
-        right: 0;
-        top: 50%;
-        transform: translateY(-50%);
-        font-size: 16px;
-        color: #86868b;
-        transition: transform 0.3s ease;
-    }
-    .section-toggle.collapsed {
-        transform: translateY(-50%) rotate(-90deg);
-    }
 
-    /* Section 标题 */
-    .section-title {
-        font-size: 20px;
-        font-weight: 700;
-        color: #1d1d1f;
-        letter-spacing: -0.02em;
-        margin: 0 0 4px;
-        line-height: 1.3;
-    }
-    .section-subtitle {
-        font-size: 12px;
-        color: #86868b;
-        margin: 0 0 12px;
-        line-height: 1.4;
-    }
-    .section-header {
-        display: flex;
-        align-items: center;
-        gap: 10px;
         margin-bottom: 12px;
-    }
-    .section-icon {
-        width: 36px;
-        height: 36px;
-        border-radius: 10px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 18px;
-        flex-shrink: 0;
-    }
-    .section-icon-explore {
-        background: linear-gradient(135deg, #667eea, #764ba2);
-    }
-    .section-icon-upload {
-        background: linear-gradient(135deg, #007aff, #5ac8fa);
-    }
-    .section-icon-gallery {
-        background: linear-gradient(135deg, #ff9500, #ff6b00);
-    }
-    .section-icon-history {
-        background: linear-gradient(135deg, #34c759, #30d158);
-    }
-    .section-icon-rank {
-        background: linear-gradient(135deg, #ff3b30, #ff6b6b);
     }
 
     /* PWA 安装提示横幅 */
@@ -2568,26 +2491,33 @@ else:
 user_nickname = st.session_state["user_nickname"]
 
 # ============================================================
-# 第一区：附近稀有鸟种 · 出行推荐（核心功能，最醒目）
 # ============================================================
-if supabase_client and user_nickname:
-    # 初始化定位 session state
-    if "loc_province" not in st.session_state:
-        st.session_state["loc_province"] = "浙江省"
-    if "loc_city" not in st.session_state:
-        st.session_state["loc_city"] = "杭州市"
-    if "loc_district" not in st.session_state:
-        st.session_state["loc_district"] = ""
-    if "geo_detected" not in st.session_state:
-        st.session_state["geo_detected"] = False
+# 主功能区：五个 Tab 页签
+# ============================================================
+# 初始化定位 session state
+if "loc_province" not in st.session_state:
+    st.session_state["loc_province"] = "浙江省"
+if "loc_city" not in st.session_state:
+    st.session_state["loc_city"] = "杭州市"
+if "loc_district" not in st.session_state:
+    st.session_state["loc_district"] = ""
+if "geo_detected" not in st.session_state:
+    st.session_state["geo_detected"] = False
 
-    ebird_api_key = ""
-    try:
-        ebird_api_key = st.secrets.get("EBIRD_API_KEY", "")
-    except (KeyError, FileNotFoundError):
-        pass
+ebird_api_key = ""
+try:
+    ebird_api_key = st.secrets.get("EBIRD_API_KEY", "")
+except (KeyError, FileNotFoundError):
+    pass
 
-    if ebird_api_key:
+
+tab_explore, tab_upload, tab_gallery, tab_history, tab_rank = st.tabs(
+    ["🔭 附近推荐", "📷 添加记录", "📸 佳作榜", "📚 观鸟记录", "🏆 排行榜"]
+)
+
+# ---- Tab 1: 附近推荐 ----
+with tab_explore:
+    if supabase_client and user_nickname and ebird_api_key:
         st.markdown(
             '<div class="section-block" data-section="explore">'
             '<div class="section-header">'
@@ -2863,542 +2793,584 @@ if supabase_client and user_nickname:
         else:
             st.warning("⚠️ 无法识别该城市，请输入更具体的地名")
 
-# ============================================================
-# 第二区：上传照片识别
-# ============================================================
-if user_nickname:
-    st.markdown(
-        '<div class="section-block" data-section="upload">'
-        '<div class="section-header">'
-        '<div class="section-icon section-icon-upload">📷</div>'
-        '<div>'
-        '<p class="section-title">添加鸟种记录</p>'
-        '<p class="section-subtitle">上传照片 AI 识别 · 导入 eBird/观鸟中心记录</p>'
-        '</div>'
-        '<span class="section-toggle">▼</span>'
-        '</div></div>',
-        unsafe_allow_html=True,
-    )
+    else:
+        st.info("🔭 请先设置昵称，即可查看附近鸟种推荐")
 
-    upload_col, import_col = st.columns(2, gap="medium")
-
-    with upload_col:
+# ============================================================
+# ---- Tab 2: 添加记录 ----
+with tab_upload:
+    if user_nickname:
         st.markdown(
-            '<p style="font-size:13px;font-weight:600;color:#1d1d1f;margin:0 0 6px;">'
-            '📷 方式一：上传照片识别</p>'
-            f'<p style="font-size:11px;color:#86868b;margin:0 0 8px;">'
-            f'支持 JPG、PNG、RAW 等格式，每次最多 {MAX_PHOTOS_PER_SESSION} 张</p>',
+            '<div class="section-block" data-section="upload">'
+            '<div class="section-header">'
+            '<div class="section-icon section-icon-upload">📷</div>'
+            '<div>'
+            '<p class="section-title">添加鸟种记录</p>'
+            '<p class="section-subtitle">上传照片 AI 识别 · 导入 eBird/观鸟中心记录</p>'
+            '</div>'
+            '<span class="section-toggle">▼</span>'
+            '</div></div>',
             unsafe_allow_html=True,
         )
-        uploaded_files = st.file_uploader(
-            "拖拽照片到此处，或点击选择文件",
-            type=["jpg", "jpeg", "png", "tif", "tiff", "heic", "bmp", "webp",
-                  "arw", "cr2", "cr3", "nef", "nrw", "dng", "raf", "orf", "rw2", "pef", "srw"],
-            accept_multiple_files=True,
-            label_visibility="collapsed",
-        )
-        if uploaded_files:
-            if len(uploaded_files) > MAX_PHOTOS_PER_SESSION:
-                st.warning(f"每次最多 {MAX_PHOTOS_PER_SESSION} 张，已自动截取。")
-                uploaded_files = uploaded_files[:MAX_PHOTOS_PER_SESSION]
+
+        upload_col, import_col = st.columns(2, gap="medium")
+
+        with upload_col:
             st.markdown(
-                f'<p style="font-size:14px; color:#86868b; margin:4px 0;">已选择 '
-                f'<b style="color:#1d1d1f;">{len(uploaded_files)}</b> 张照片</p>',
+                '<p style="font-size:13px;font-weight:600;color:#1d1d1f;margin:0 0 6px;">'
+                '📷 方式一：上传照片识别</p>'
+                f'<p style="font-size:11px;color:#86868b;margin:0 0 8px;">'
+                f'支持 JPG、PNG、RAW 等格式，每次最多 {MAX_PHOTOS_PER_SESSION} 张</p>',
                 unsafe_allow_html=True,
             )
-        else:
-            # 未上传时显示示范图片，与右栏高度对齐
-            st.markdown(
-                '<div style="display:flex;gap:8px;margin-top:8px;">'
-                '<div style="flex:1;background:linear-gradient(135deg,#e8f4fd,#d1ecf9);'
-                'border-radius:10px;padding:16px 8px;text-align:center;">'
-                '<div style="font-size:32px;">🦅</div>'
-                '<p style="font-size:10px;color:#667eea;margin:4px 0 0;font-weight:600;">猛禽</p>'
-                '</div>'
-                '<div style="flex:1;background:linear-gradient(135deg,#fef3e2,#fde8c8);'
-                'border-radius:10px;padding:16px 8px;text-align:center;">'
-                '<div style="font-size:32px;">🐦</div>'
-                '<p style="font-size:10px;color:#e67e22;margin:4px 0 0;font-weight:600;">雀形目</p>'
-                '</div>'
-                '<div style="flex:1;background:linear-gradient(135deg,#e8f8e8,#d4f0d4);'
-                'border-radius:10px;padding:16px 8px;text-align:center;">'
-                '<div style="font-size:32px;">🦆</div>'
-                '<p style="font-size:10px;color:#27ae60;margin:4px 0 0;font-weight:600;">水鸟</p>'
-                '</div>'
-                '</div>'
-                '<div style="display:flex;gap:8px;margin-top:6px;">'
-                '<div style="flex:1;background:linear-gradient(135deg,#f3e8fd,#e8d5f5);'
-                'border-radius:10px;padding:16px 8px;text-align:center;">'
-                '<div style="font-size:32px;">🦉</div>'
-                '<p style="font-size:10px;color:#8e44ad;margin:4px 0 0;font-weight:600;">鸮形目</p>'
-                '</div>'
-                '<div style="flex:1;background:linear-gradient(135deg,#fde8e8,#f5d4d4);'
-                'border-radius:10px;padding:16px 8px;text-align:center;">'
-                '<div style="font-size:32px;">🦜</div>'
-                '<p style="font-size:10px;color:#e74c3c;margin:4px 0 0;font-weight:600;">鹦形目</p>'
-                '</div>'
-                '<div style="flex:1;background:linear-gradient(135deg,#e8f0fd,#d4e4f5);'
-                'border-radius:10px;padding:16px 8px;text-align:center;">'
-                '<div style="font-size:32px;">🦩</div>'
-                '<p style="font-size:10px;color:#3498db;margin:4px 0 0;font-weight:600;">涉禽</p>'
-                '</div>'
-                '</div>'
-                '<p style="font-size:10px;color:#aaa;text-align:center;margin:6px 0 0;">'
-                '支持识别 1000+ 种鸟类 · AI 自动评分</p>',
-                unsafe_allow_html=True,
-            )
-
-    with import_col:
-        st.markdown(
-            '<p style="font-size:13px;font-weight:600;color:#1d1d1f;margin:0 0 6px;">'
-            '📥 方式二：导入观鸟记录</p>'
-            '<p style="font-size:11px;color:#86868b;margin:0 0 8px;">'
-            '导入 eBird / 观鸟中心的历史记录，让推荐更精准</p>',
-            unsafe_allow_html=True,
-        )
-        if supabase_client:
-            import_sync_info = _get_import_sync_info(
-                supabase_client, st.session_state["user_nickname"]
-            )
-            last_sync_date = import_sync_info.get("last_sync", "")
-            imported_total = import_sync_info.get("count", 0)
-
-            if imported_total > 0:
-                st.markdown(
-                    f'<div style="background:rgba(52,199,89,0.08); padding:8px 12px; '
-                    f'border-radius:10px; margin-bottom:8px;">'
-                    f'<span style="font-size:12px; font-weight:600; color:#1d1d1f;">'
-                    f'✅ 已同步 {imported_total} 种</span>'
-                    f'<span style="font-size:10px; color:#86868b; margin-left:8px;">'
-                    f'📅 {last_sync_date}</span></div>',
-                    unsafe_allow_html=True,
-                )
-
-            import_source = st.radio(
-                "数据来源",
-                ["eBird", "中国观鸟记录中心", "其他（通用 CSV）"],
-                horizontal=True,
-                key="import_source_radio",
+            uploaded_files = st.file_uploader(
+                "拖拽照片到此处，或点击选择文件",
+                type=["jpg", "jpeg", "png", "tif", "tiff", "heic", "bmp", "webp",
+                      "arw", "cr2", "cr3", "nef", "nrw", "dng", "raf", "orf", "rw2", "pef", "srw"],
+                accept_multiple_files=True,
                 label_visibility="collapsed",
             )
-
-            if import_source == "eBird":
+            if uploaded_files:
+                if len(uploaded_files) > MAX_PHOTOS_PER_SESSION:
+                    st.warning(f"每次最多 {MAX_PHOTOS_PER_SESSION} 张，已自动截取。")
+                    uploaded_files = uploaded_files[:MAX_PHOTOS_PER_SESSION]
                 st.markdown(
-                    '<div style="background:rgba(102,126,234,0.06); padding:6px 10px; '
-                    'border-radius:8px; margin:4px 0 6px;">'
-                    '<p style="font-size:11px; color:#86868b; margin:0; line-height:1.5;">'
-                    '1. 打开 <a href="https://ebird.org/downloadMyData" target="_blank" '
-                    'style="color:#667eea;">ebird.org/downloadMyData</a><br>'
-                    '2. 登录并点击 "Download My Data"<br>'
-                    '3. 上传下载的 CSV 文件</p></div>',
-                    unsafe_allow_html=True,
-                )
-            elif import_source == "中国观鸟记录中心":
-                st.markdown(
-                    '<div style="background:rgba(102,126,234,0.06); padding:6px 10px; '
-                    'border-radius:8px; margin:4px 0 6px;">'
-                    '<p style="font-size:11px; color:#86868b; margin:0; line-height:1.5;">'
-                    '1. 打开 <a href="https://www.birdreport.cn/" target="_blank" '
-                    'style="color:#667eea;">birdreport.cn</a> 并登录<br>'
-                    '2. 进入「我的记录」导出 CSV<br>'
-                    '3. 上传下载的 CSV 文件</p></div>',
+                    f'<p style="font-size:14px; color:#86868b; margin:4px 0;">已选择 '
+                    f'<b style="color:#1d1d1f;">{len(uploaded_files)}</b> 张照片</p>',
                     unsafe_allow_html=True,
                 )
             else:
+                # 未上传时显示示范图片，与右栏高度对齐
                 st.markdown(
-                    '<p style="font-size:11px; color:#aaa; margin:2px 0 4px;">'
-                    '支持包含鸟种名称列的 CSV 文件</p>',
+                    '<div style="display:flex;gap:8px;margin-top:8px;">'
+                    '<div style="flex:1;background:linear-gradient(135deg,#e8f4fd,#d1ecf9);'
+                    'border-radius:10px;padding:16px 8px;text-align:center;">'
+                    '<div style="font-size:32px;">🦅</div>'
+                    '<p style="font-size:10px;color:#667eea;margin:4px 0 0;font-weight:600;">猛禽</p>'
+                    '</div>'
+                    '<div style="flex:1;background:linear-gradient(135deg,#fef3e2,#fde8c8);'
+                    'border-radius:10px;padding:16px 8px;text-align:center;">'
+                    '<div style="font-size:32px;">🐦</div>'
+                    '<p style="font-size:10px;color:#e67e22;margin:4px 0 0;font-weight:600;">雀形目</p>'
+                    '</div>'
+                    '<div style="flex:1;background:linear-gradient(135deg,#e8f8e8,#d4f0d4);'
+                    'border-radius:10px;padding:16px 8px;text-align:center;">'
+                    '<div style="font-size:32px;">🦆</div>'
+                    '<p style="font-size:10px;color:#27ae60;margin:4px 0 0;font-weight:600;">水鸟</p>'
+                    '</div>'
+                    '</div>'
+                    '<div style="display:flex;gap:8px;margin-top:6px;">'
+                    '<div style="flex:1;background:linear-gradient(135deg,#f3e8fd,#e8d5f5);'
+                    'border-radius:10px;padding:16px 8px;text-align:center;">'
+                    '<div style="font-size:32px;">🦉</div>'
+                    '<p style="font-size:10px;color:#8e44ad;margin:4px 0 0;font-weight:600;">鸮形目</p>'
+                    '</div>'
+                    '<div style="flex:1;background:linear-gradient(135deg,#fde8e8,#f5d4d4);'
+                    'border-radius:10px;padding:16px 8px;text-align:center;">'
+                    '<div style="font-size:32px;">🦜</div>'
+                    '<p style="font-size:10px;color:#e74c3c;margin:4px 0 0;font-weight:600;">鹦形目</p>'
+                    '</div>'
+                    '<div style="flex:1;background:linear-gradient(135deg,#e8f0fd,#d4e4f5);'
+                    'border-radius:10px;padding:16px 8px;text-align:center;">'
+                    '<div style="font-size:32px;">🦩</div>'
+                    '<p style="font-size:10px;color:#3498db;margin:4px 0 0;font-weight:600;">涉禽</p>'
+                    '</div>'
+                    '</div>'
+                    '<p style="font-size:10px;color:#aaa;text-align:center;margin:6px 0 0;">'
+                    '支持识别 1000+ 种鸟类 · AI 自动评分</p>',
                     unsafe_allow_html=True,
                 )
 
-            import_csv_file = st.file_uploader(
-                "上传 CSV",
-                type=["csv"],
-                key="import_csv_uploader",
-                label_visibility="collapsed",
-            )
-
-            if import_csv_file:
-                csv_content = import_csv_file.getvalue().decode("utf-8", errors="ignore")
-                parsed_species = parse_import_csv(csv_content)
-
-                if parsed_species:
-                    st.markdown(
-                        f'<p style="font-size:12px; color:#1d1d1f; margin:4px 0;">'
-                        f'📋 检测到 <b>{len(parsed_species)}</b> 个鸟种</p>',
-                        unsafe_allow_html=True,
-                    )
-                    preview_names = []
-                    for species in parsed_species[:8]:
-                        name = species.get("chinese_name") or species.get("common_name", "")
-                        if name:
-                            preview_names.append(name)
-                    if preview_names:
-                        st.markdown(
-                            f'<p style="font-size:11px; color:#86868b; margin:2px 0 6px;">'
-                            f'{" · ".join(preview_names)}'
-                            f'{"…" if len(parsed_species) > 8 else ""}</p>',
-                            unsafe_allow_html=True,
-                        )
-
-                    import_action_label = "🔄 增量更新" if imported_total > 0 else "🚀 开始导入"
-                    if st.button(import_action_label, type="primary", use_container_width=True):
-                        with st.spinner("正在导入并翻译鸟种名称…"):
-                            imported, skipped, error = import_species_to_db(
-                                st.session_state["user_nickname"],
-                                parsed_species,
-                                api_key,
-                            )
-                        if error:
-                            st.error(f"导入出错：{error}")
-                        elif imported > 0:
-                            st.success(
-                                f"✅ 成功导入 **{imported}** 个新鸟种！"
-                                f"{'（' + str(skipped) + ' 个已存在）' if skipped > 0 else ''}"
-                            )
-                            fetch_user_history.clear()
-                            st.rerun()
-                        else:
-                            st.info("数据已是最新 👍")
-                else:
-                    st.warning("⚠️ 未能识别鸟种，请检查 CSV 格式")
-
-    # ============================================================
-    # 上传后自动识别
-    # ============================================================
-    if uploaded_files and api_key:
-        if "identified_cache" not in st.session_state:
-            st.session_state["identified_cache"] = {}
-    
-        def make_file_key(uploaded_file):
-            return f"{uploaded_file.name}_{uploaded_file.size}"
-    
-        current_file_keys = set()
-        new_files = []
-        for uploaded_file in uploaded_files:
-            fkey = make_file_key(uploaded_file)
-            current_file_keys.add(fkey)
-            if fkey not in st.session_state["identified_cache"]:
-                new_files.append(uploaded_file)
-    
-        if new_files:
-            # 仪式感进度提示
+        with import_col:
             st.markdown(
-                '<div class="progress-banner">'
-                '✨ AI 正在分析你的照片…'
-                '</div>',
+                '<p style="font-size:13px;font-weight:600;color:#1d1d1f;margin:0 0 6px;">'
+                '📥 方式二：导入观鸟记录</p>'
+                '<p style="font-size:11px;color:#86868b;margin:0 0 8px;">'
+                '导入 eBird / 观鸟中心的历史记录，让推荐更精准</p>',
                 unsafe_allow_html=True,
             )
-            progress_bar = st.progress(0)
-            progress_text = st.empty()
-    
-            current_nickname = st.session_state.get("user_nickname", "")
-            # 在主线程中读取 Supabase 配置，通过闭包传入子线程（彻底避免子线程访问 st.secrets）
-            _sb_url, _sb_key = _supabase_config()
-    
-            # 用于子线程向主线程报告当前步骤的共享状态
-            import threading
-            _file_progress_lock = threading.Lock()
-            _file_progress = {}  # {file_name: "当前步骤描述"}
-    
-            def _update_file_step(file_name: str, step: str):
-                with _file_progress_lock:
-                    _file_progress[file_name] = step
-    
-            def _process_single_file(uploaded_file):
-                """在线程中处理单张照片：EXIF提取 + 编码 + AI识别 + 保存数据库"""
-                fname = uploaded_file.name
-                _update_file_step(fname, "📂 读取图片信息…")
-                image_bytes = uploaded_file.getvalue()
-                suffix = Path(fname).suffix.lower()
-    
-                _update_file_step(fname, "📷 提取 EXIF 数据…")
-                exif_info = extract_exif_info(image_bytes, fname)
-    
-                if exif_info.get("gps_lat") and exif_info.get("gps_lon"):
-                    _update_file_step(fname, "🗺️ 解析拍摄地点…")
-                    geocoded_location = reverse_geocode(exif_info["gps_lat"], exif_info["gps_lon"])
-                    if geocoded_location:
-                        exif_info["geocoded_location"] = geocoded_location
-    
-                _update_file_step(fname, "🔄 压缩编码图片…")
-                image_base64 = encode_image_to_base64(image_bytes, filename=fname)
-    
-                _update_file_step(fname, "🤖 AI 识别鸟种中…（耗时较长）")
-                result = identify_bird(image_base64, api_key, exif_info)
-    
-                shoot_date = ""
-                if exif_info.get("shoot_time"):
-                    shoot_date = exif_info["shoot_time"][:8]
-                result["shoot_date"] = shoot_date
-                result["original_name"] = fname
-    
-                # 生成缩略图并保存到数据库（通过闭包传入 URL/Key，不依赖 st.secrets）
-                db_saved = False
-                db_error = ""
-                db_record_id = None
-                if supabase_client and current_nickname and _sb_url and _sb_key:
-                    _update_file_step(fname, "💾 保存识别记录…")
-                    thumb_b64 = generate_thumbnail_base64(image_bytes, fname)
-                    db_saved, db_error, db_record_id = save_record_to_db(
-                        supabase_client, current_nickname, result, thumb_b64,
-                        supabase_url=_sb_url, supabase_key=_sb_key,
-                    )
-                elif not _sb_url or not _sb_key:
-                    db_error = "Supabase 配置在主线程中读取失败"
-                result["_db_saved"] = db_saved
-                result["_db_error"] = db_error
-                result["_db_record_id"] = db_record_id if db_saved else None
-    
-                _update_file_step(fname, "✅ 完成")
-                return uploaded_file, {
-                    "result": result,
-                    "image_bytes": image_bytes,
-                    "suffix": suffix,
-                }
-    
-            # 并发识别（最多 3 个线程，避免 API 限流）
-            max_workers = min(3, len(new_files))
-            completed_count = 0
-            db_save_failures = []
-    
-            with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-                future_to_file = {
-                    executor.submit(_process_single_file, f): f
-                    for f in new_files
-                }
-                pending_futures = set(future_to_file.keys())
-                while pending_futures:
-                    # 每 0.3 秒轮询一次，更新进度显示
-                    done_batch, pending_futures = concurrent.futures.wait(
-                        pending_futures, timeout=0.3,
-                        return_when=concurrent.futures.FIRST_COMPLETED,
-                    )
-                    # 构建当前所有文件的进度摘要
-                    with _file_progress_lock:
-                        step_lines = []
-                        for fname_key, step_desc in _file_progress.items():
-                            short_name = fname_key if len(fname_key) <= 20 else fname_key[:17] + "…"
-                            step_lines.append(f"**{short_name}**　{step_desc}")
-                    progress_text.markdown("　\n".join(step_lines) if step_lines else "⏳ 准备中…")
-    
-                    for future in done_batch:
-                        completed_count += 1
-                        progress_bar.progress(
-                            completed_count / len(new_files),
-                            text=f"🔍 已完成 {completed_count}/{len(new_files)}",
-                        )
-                        try:
-                            done_file, cache_entry = future.result()
-                            fkey = make_file_key(done_file)
-                            st.session_state["identified_cache"][fkey] = cache_entry
-                            if not cache_entry["result"].get("_db_saved", False):
-                                db_save_failures.append(done_file.name)
-                        except Exception as exc:
-                            failed_name = future_to_file[future].name
-                            st.toast(f"⚠️ {failed_name} 识别失败: {exc}", icon="⚠️")
-    
-            progress_text.empty()
-    
-            if db_save_failures:
-                # 收集具体的错误原因
-                error_details = []
-                for fkey_check, cache_check in st.session_state["identified_cache"].items():
-                    db_err = cache_check["result"].get("_db_error", "")
-                    if db_err:
-                        error_details.append(db_err)
-                error_hint = f" 错误详情：{error_details[0]}" if error_details else ""
-                st.warning(
-                    f"⚠️ 以下照片的识别结果未能保存到云端数据库：{', '.join(db_save_failures)}。{error_hint}"
+            if supabase_client:
+                import_sync_info = _get_import_sync_info(
+                    supabase_client, st.session_state["user_nickname"]
                 )
-    
-            # 新增记录后清除缓存，确保历史记录和排行榜刷新
-            fetch_user_history.clear()
-            fetch_leaderboard.clear()
-            fetch_top_photos.clear()
-    
-        results_with_bytes = []
-        for uploaded_file in uploaded_files:
-            fkey = make_file_key(uploaded_file)
-            if fkey in st.session_state["identified_cache"]:
-                results_with_bytes.append(st.session_state["identified_cache"][fkey])
-    
-        if results_with_bytes:
-            zip_bytes = create_organized_zip(results_with_bytes)
-            st.session_state["results_with_bytes"] = results_with_bytes
-            st.session_state["zip_bytes"] = zip_bytes
+                last_sync_date = import_sync_info.get("last_sync", "")
+                imported_total = import_sync_info.get("count", 0)
 
-    # ============================================================
-    # 展示结果
-    # ============================================================
-    if "results_with_bytes" in st.session_state:
-        results_with_bytes = st.session_state["results_with_bytes"]
-        results = [item["result"] for item in results_with_bytes]
-    
-        st.markdown(
-            '<div class="results-divider"></div>',
-            unsafe_allow_html=True,
-        )
-    
-        # 汇总统计
-        scores = [r["score"] for r in results if r.get("score")]
-        if scores:
-            species_set = set(r["chinese_name"] for r in results)
-            avg_score = sum(scores) / len(scores)
-            best_score = max(scores)
-    
-            stat_cols = st.columns(4, gap="small")
-            stat_data = [
-                (str(len(results)), "照片"),
-                (f"{len(species_set)}", "鸟种"),
-                (f"{avg_score:.1f}", "均分"),
-                (f"{best_score}", "最高"),
-            ]
-            for col, (value, label) in zip(stat_cols, stat_data):
-                with col:
+                if imported_total > 0:
                     st.markdown(
-                        f'<div class="stat-card">'
-                        f'<div class="stat-value">{value}</div>'
-                        f'<div class="stat-label">{label}</div>'
-                        f'</div>',
+                        f'<div style="background:rgba(52,199,89,0.08); padding:8px 12px; '
+                        f'border-radius:10px; margin-bottom:8px;">'
+                        f'<span style="font-size:12px; font-weight:600; color:#1d1d1f;">'
+                        f'✅ 已同步 {imported_total} 种</span>'
+                        f'<span style="font-size:10px; color:#86868b; margin-left:8px;">'
+                        f'📅 {last_sync_date}</span></div>',
                         unsafe_allow_html=True,
                     )
-    
-        # 分类统计
-        taxonomy = {}
-        for result in results:
-            order = result.get("order_chinese", "未知目")
-            family = result.get("family_chinese", "未知科")
-            species_name = result["chinese_name"]
-            taxonomy.setdefault(order, {}).setdefault(family, set())
-            taxonomy[order][family].add(species_name)
-    
-        with st.expander("分类学概览"):
-            for order, families in sorted(taxonomy.items()):
-                st.markdown(f"**{order}**")
-                for family, species_set in sorted(families.items()):
-                    species_list = " · ".join(sorted(species_set))
+
+                import_source = st.radio(
+                    "数据来源",
+                    ["eBird", "中国观鸟记录中心", "其他（通用 CSV）"],
+                    horizontal=True,
+                    key="import_source_radio",
+                    label_visibility="collapsed",
+                )
+
+                if import_source == "eBird":
                     st.markdown(
-                        f'&nbsp;&nbsp;&nbsp;&nbsp;'
-                        f'<span class="taxonomy-pill family-pill">{family}</span> '
-                        f'<span style="color:#6e6e73; font-size:14px;">{species_list}</span>',
+                        '<div style="background:rgba(102,126,234,0.06); padding:6px 10px; '
+                        'border-radius:8px; margin:4px 0 6px;">'
+                        '<p style="font-size:11px; color:#86868b; margin:0; line-height:1.5;">'
+                        '1. 打开 <a href="https://ebird.org/downloadMyData" target="_blank" '
+                        'style="color:#667eea;">ebird.org/downloadMyData</a><br>'
+                        '2. 登录并点击 "Download My Data"<br>'
+                        '3. 上传下载的 CSV 文件</p></div>',
                         unsafe_allow_html=True,
                     )
-    
-        # 逐张展示 - 一行3个卡片网格（右栏空间适配）
-        for row_start in range(0, len(results_with_bytes), 3):
-            row_items = results_with_bytes[row_start:row_start + 3]
-            card_cols = st.columns(3)
-    
-            for col_idx, item in enumerate(row_items):
-                result = item["result"]
-                image_bytes = item["image_bytes"]
-    
-                score = result.get("score", 0)
-                score_color = get_score_color(score)
-                score_emoji = get_score_emoji(score)
-                confidence = result.get("confidence", "low")
-    
-                with card_cols[col_idx]:
-                    original_name = result.get("original_name", "")
-                    preview_img = image_bytes_to_pil(image_bytes, original_name)
-                    if preview_img is not None:
-                        bird_bbox = result.get("bird_bbox")
-                        if bird_bbox and len(bird_bbox) == 4:
-                            try:
-                                # 在原图上绘制 AI 识别区域高亮框
-                                annotated_img = draw_bird_bbox(preview_img.copy(), bird_bbox)
-                                # 裁剪聚焦到鸟的区域用于展示
-                                cropped_img = crop_to_bird(annotated_img.copy(), bird_bbox)
-                                st.image(cropped_img, use_container_width=True)
-                            except Exception:
-                                st.image(preview_img, use_container_width=True)
-                        else:
-                            st.image(preview_img, use_container_width=True)
-                    else:
-                        st.text("无法预览")
-    
-                    # 低置信度提示
-                    candidates = result.get("candidates", [])
-                    if candidates:
-                        max_similarity = max(c.get("similarity", 0) for c in candidates)
-                        if max_similarity < 50:
+                elif import_source == "中国观鸟记录中心":
+                    st.markdown(
+                        '<div style="background:rgba(102,126,234,0.06); padding:6px 10px; '
+                        'border-radius:8px; margin:4px 0 6px;">'
+                        '<p style="font-size:11px; color:#86868b; margin:0; line-height:1.5;">'
+                        '1. 打开 <a href="https://www.birdreport.cn/" target="_blank" '
+                        'style="color:#667eea;">birdreport.cn</a> 并登录<br>'
+                        '2. 进入「我的记录」导出 CSV<br>'
+                        '3. 上传下载的 CSV 文件</p></div>',
+                        unsafe_allow_html=True,
+                    )
+                else:
+                    st.markdown(
+                        '<p style="font-size:11px; color:#aaa; margin:2px 0 4px;">'
+                        '支持包含鸟种名称列的 CSV 文件</p>',
+                        unsafe_allow_html=True,
+                    )
+
+                import_csv_file = st.file_uploader(
+                    "上传 CSV",
+                    type=["csv"],
+                    key="import_csv_uploader",
+                    label_visibility="collapsed",
+                )
+
+                if import_csv_file:
+                    csv_content = import_csv_file.getvalue().decode("utf-8", errors="ignore")
+                    parsed_species = parse_import_csv(csv_content)
+
+                    if parsed_species:
+                        st.markdown(
+                            f'<p style="font-size:12px; color:#1d1d1f; margin:4px 0;">'
+                            f'📋 检测到 <b>{len(parsed_species)}</b> 个鸟种</p>',
+                            unsafe_allow_html=True,
+                        )
+                        preview_names = []
+                        for species in parsed_species[:8]:
+                            name = species.get("chinese_name") or species.get("common_name", "")
+                            if name:
+                                preview_names.append(name)
+                        if preview_names:
                             st.markdown(
-                                '<div style="background:rgba(255,149,0,0.12); color:#cc7700; '
-                                'padding:6px 10px; border-radius:8px; font-size:12px; '
-                                'margin-bottom:6px; text-align:center;">'
-                                '⚠️ AI 不太确定，建议人工确认或提供更清晰的照片</div>',
+                                f'<p style="font-size:11px; color:#86868b; margin:2px 0 6px;">'
+                                f'{" · ".join(preview_names)}'
+                                f'{"…" if len(parsed_species) > 8 else ""}</p>',
                                 unsafe_allow_html=True,
                             )
+
+                        import_action_label = "🔄 增量更新" if imported_total > 0 else "🚀 开始导入"
+                        if st.button(import_action_label, type="primary", use_container_width=True):
+                            with st.spinner("正在导入并翻译鸟种名称…"):
+                                imported, skipped, error = import_species_to_db(
+                                    st.session_state["user_nickname"],
+                                    parsed_species,
+                                    api_key,
+                                )
+                            if error:
+                                st.error(f"导入出错：{error}")
+                            elif imported > 0:
+                                st.success(
+                                    f"✅ 成功导入 **{imported}** 个新鸟种！"
+                                    f"{'（' + str(skipped) + ' 个已存在）' if skipped > 0 else ''}"
+                                )
+                                fetch_user_history.clear()
+                                st.rerun()
+                            else:
+                                st.info("数据已是最新 👍")
+                    else:
+                        st.warning("⚠️ 未能识别鸟种，请检查 CSV 格式")
+
+        # ============================================================
+        # 上传后自动识别
+        # ============================================================
+        if uploaded_files and api_key:
+            if "identified_cache" not in st.session_state:
+                st.session_state["identified_cache"] = {}
     
-                    # 候选鸟种选择（带相似度百分比）
-                    card_index = row_start + col_idx
-                    select_key = f"select_species_{card_index}"
-                    current_name = result.get("chinese_name", "未知")
+            def make_file_key(uploaded_file):
+                return f"{uploaded_file.name}_{uploaded_file.size}"
     
-                    if candidates and len(candidates) > 0:
-                        # 构建选项列表：「中文名 (相似度%)」
-                        option_labels = []
-                        option_names = []
-                        for candidate in candidates:
-                            cname = candidate.get("chinese_name", "未知")
-                            similarity = candidate.get("similarity", 0)
-                            reason = candidate.get("reason", "")
-                            label = f"{cname}（{similarity}%）- {reason}" if reason else f"{cname}（{similarity}%）"
-                            option_labels.append(label)
-                            option_names.append(cname)
+            current_file_keys = set()
+            new_files = []
+            for uploaded_file in uploaded_files:
+                fkey = make_file_key(uploaded_file)
+                current_file_keys.add(fkey)
+                if fkey not in st.session_state["identified_cache"]:
+                    new_files.append(uploaded_file)
     
-                        # 如果当前名称不在候选列表中，添加到首位
-                        if current_name not in option_names:
-                            option_labels.insert(0, f"{current_name}（当前）")
-                            option_names.insert(0, current_name)
+            if new_files:
+                # 仪式感进度提示
+                st.markdown(
+                    '<div class="progress-banner">'
+                    '✨ AI 正在分析你的照片…'
+                    '</div>',
+                    unsafe_allow_html=True,
+                )
+                progress_bar = st.progress(0)
+                progress_text = st.empty()
     
-                        # 默认选中当前名称
-                        default_index = option_names.index(current_name) if current_name in option_names else 0
+                current_nickname = st.session_state.get("user_nickname", "")
+                # 在主线程中读取 Supabase 配置，通过闭包传入子线程（彻底避免子线程访问 st.secrets）
+                _sb_url, _sb_key = _supabase_config()
     
-                        selected_label = st.selectbox(
-                            "选择鸟种",
-                            options=option_labels,
-                            index=default_index,
-                            key=select_key,
-                            label_visibility="collapsed",
+                # 用于子线程向主线程报告当前步骤的共享状态
+                import threading
+                _file_progress_lock = threading.Lock()
+                _file_progress = {}  # {file_name: "当前步骤描述"}
+    
+                def _update_file_step(file_name: str, step: str):
+                    with _file_progress_lock:
+                        _file_progress[file_name] = step
+    
+                def _process_single_file(uploaded_file):
+                    """在线程中处理单张照片：EXIF提取 + 编码 + AI识别 + 保存数据库"""
+                    fname = uploaded_file.name
+                    _update_file_step(fname, "📂 读取图片信息…")
+                    image_bytes = uploaded_file.getvalue()
+                    suffix = Path(fname).suffix.lower()
+    
+                    _update_file_step(fname, "📷 提取 EXIF 数据…")
+                    exif_info = extract_exif_info(image_bytes, fname)
+    
+                    if exif_info.get("gps_lat") and exif_info.get("gps_lon"):
+                        _update_file_step(fname, "🗺️ 解析拍摄地点…")
+                        geocoded_location = reverse_geocode(exif_info["gps_lat"], exif_info["gps_lon"])
+                        if geocoded_location:
+                            exif_info["geocoded_location"] = geocoded_location
+    
+                    _update_file_step(fname, "🔄 压缩编码图片…")
+                    image_base64 = encode_image_to_base64(image_bytes, filename=fname)
+    
+                    _update_file_step(fname, "🤖 AI 识别鸟种中…（耗时较长）")
+                    result = identify_bird(image_base64, api_key, exif_info)
+    
+                    shoot_date = ""
+                    if exif_info.get("shoot_time"):
+                        shoot_date = exif_info["shoot_time"][:8]
+                    result["shoot_date"] = shoot_date
+                    result["original_name"] = fname
+    
+                    # 生成缩略图并保存到数据库（通过闭包传入 URL/Key，不依赖 st.secrets）
+                    db_saved = False
+                    db_error = ""
+                    db_record_id = None
+                    if supabase_client and current_nickname and _sb_url and _sb_key:
+                        _update_file_step(fname, "💾 保存识别记录…")
+                        thumb_b64 = generate_thumbnail_base64(image_bytes, fname)
+                        db_saved, db_error, db_record_id = save_record_to_db(
+                            supabase_client, current_nickname, result, thumb_b64,
+                            supabase_url=_sb_url, supabase_key=_sb_key,
                         )
-                        selected_index = option_labels.index(selected_label)
-                        selected_name = option_names[selected_index]
+                    elif not _sb_url or not _sb_key:
+                        db_error = "Supabase 配置在主线程中读取失败"
+                    result["_db_saved"] = db_saved
+                    result["_db_error"] = db_error
+                    result["_db_record_id"] = db_record_id if db_saved else None
     
-                        # 获取选中候选种的英文名
-                        selected_english = result.get("english_name", "")
-                        for candidate in candidates:
-                            if candidate.get("chinese_name") == selected_name:
-                                selected_english = candidate.get("english_name", selected_english)
-                                break
+                    _update_file_step(fname, "✅ 完成")
+                    return uploaded_file, {
+                        "result": result,
+                        "image_bytes": image_bytes,
+                        "suffix": suffix,
+                    }
     
-                        # 选择了不同鸟种时，显示确认按钮
-                        if selected_name != current_name:
-                            confirm_key = f"confirm_species_{card_index}"
-                            if st.button(f"✅ 确认修改为「{selected_name}」", key=confirm_key, use_container_width=True):
+                # 并发识别（最多 3 个线程，避免 API 限流）
+                max_workers = min(3, len(new_files))
+                completed_count = 0
+                db_save_failures = []
+    
+                with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+                    future_to_file = {
+                        executor.submit(_process_single_file, f): f
+                        for f in new_files
+                    }
+                    pending_futures = set(future_to_file.keys())
+                    while pending_futures:
+                        # 每 0.3 秒轮询一次，更新进度显示
+                        done_batch, pending_futures = concurrent.futures.wait(
+                            pending_futures, timeout=0.3,
+                            return_when=concurrent.futures.FIRST_COMPLETED,
+                        )
+                        # 构建当前所有文件的进度摘要
+                        with _file_progress_lock:
+                            step_lines = []
+                            for fname_key, step_desc in _file_progress.items():
+                                short_name = fname_key if len(fname_key) <= 20 else fname_key[:17] + "…"
+                                step_lines.append(f"**{short_name}**　{step_desc}")
+                        progress_text.markdown("　\n".join(step_lines) if step_lines else "⏳ 准备中…")
+    
+                        for future in done_batch:
+                            completed_count += 1
+                            progress_bar.progress(
+                                completed_count / len(new_files),
+                                text=f"🔍 已完成 {completed_count}/{len(new_files)}",
+                            )
+                            try:
+                                done_file, cache_entry = future.result()
+                                fkey = make_file_key(done_file)
+                                st.session_state["identified_cache"][fkey] = cache_entry
+                                if not cache_entry["result"].get("_db_saved", False):
+                                    db_save_failures.append(done_file.name)
+                            except Exception as exc:
+                                failed_name = future_to_file[future].name
+                                st.toast(f"⚠️ {failed_name} 识别失败: {exc}", icon="⚠️")
+    
+                progress_text.empty()
+    
+                if db_save_failures:
+                    # 收集具体的错误原因
+                    error_details = []
+                    for fkey_check, cache_check in st.session_state["identified_cache"].items():
+                        db_err = cache_check["result"].get("_db_error", "")
+                        if db_err:
+                            error_details.append(db_err)
+                    error_hint = f" 错误详情：{error_details[0]}" if error_details else ""
+                    st.warning(
+                        f"⚠️ 以下照片的识别结果未能保存到云端数据库：{', '.join(db_save_failures)}。{error_hint}"
+                    )
+    
+                # 新增记录后清除缓存，确保历史记录和排行榜刷新
+                fetch_user_history.clear()
+                fetch_leaderboard.clear()
+                fetch_top_photos.clear()
+    
+            results_with_bytes = []
+            for uploaded_file in uploaded_files:
+                fkey = make_file_key(uploaded_file)
+                if fkey in st.session_state["identified_cache"]:
+                    results_with_bytes.append(st.session_state["identified_cache"][fkey])
+    
+            if results_with_bytes:
+                zip_bytes = create_organized_zip(results_with_bytes)
+                st.session_state["results_with_bytes"] = results_with_bytes
+                st.session_state["zip_bytes"] = zip_bytes
+
+        # ============================================================
+        # 展示结果
+        # ============================================================
+        if "results_with_bytes" in st.session_state:
+            results_with_bytes = st.session_state["results_with_bytes"]
+            results = [item["result"] for item in results_with_bytes]
+    
+            st.markdown(
+                '<div class="results-divider"></div>',
+                unsafe_allow_html=True,
+            )
+    
+            # 汇总统计
+            scores = [r["score"] for r in results if r.get("score")]
+            if scores:
+                species_set = set(r["chinese_name"] for r in results)
+                avg_score = sum(scores) / len(scores)
+                best_score = max(scores)
+    
+                stat_cols = st.columns(4, gap="small")
+                stat_data = [
+                    (str(len(results)), "照片"),
+                    (f"{len(species_set)}", "鸟种"),
+                    (f"{avg_score:.1f}", "均分"),
+                    (f"{best_score}", "最高"),
+                ]
+                for col, (value, label) in zip(stat_cols, stat_data):
+                    with col:
+                        st.markdown(
+                            f'<div class="stat-card">'
+                            f'<div class="stat-value">{value}</div>'
+                            f'<div class="stat-label">{label}</div>'
+                            f'</div>',
+                            unsafe_allow_html=True,
+                        )
+    
+            # 分类统计
+            taxonomy = {}
+            for result in results:
+                order = result.get("order_chinese", "未知目")
+                family = result.get("family_chinese", "未知科")
+                species_name = result["chinese_name"]
+                taxonomy.setdefault(order, {}).setdefault(family, set())
+                taxonomy[order][family].add(species_name)
+    
+            with st.expander("分类学概览"):
+                for order, families in sorted(taxonomy.items()):
+                    st.markdown(f"**{order}**")
+                    for family, species_set in sorted(families.items()):
+                        species_list = " · ".join(sorted(species_set))
+                        st.markdown(
+                            f'&nbsp;&nbsp;&nbsp;&nbsp;'
+                            f'<span class="taxonomy-pill family-pill">{family}</span> '
+                            f'<span style="color:#6e6e73; font-size:14px;">{species_list}</span>',
+                            unsafe_allow_html=True,
+                        )
+    
+            # 逐张展示 - 一行3个卡片网格（右栏空间适配）
+            for row_start in range(0, len(results_with_bytes), 3):
+                row_items = results_with_bytes[row_start:row_start + 3]
+                card_cols = st.columns(3)
+    
+                for col_idx, item in enumerate(row_items):
+                    result = item["result"]
+                    image_bytes = item["image_bytes"]
+    
+                    score = result.get("score", 0)
+                    score_color = get_score_color(score)
+                    score_emoji = get_score_emoji(score)
+                    confidence = result.get("confidence", "low")
+    
+                    with card_cols[col_idx]:
+                        original_name = result.get("original_name", "")
+                        preview_img = image_bytes_to_pil(image_bytes, original_name)
+                        if preview_img is not None:
+                            bird_bbox = result.get("bird_bbox")
+                            if bird_bbox and len(bird_bbox) == 4:
+                                try:
+                                    # 在原图上绘制 AI 识别区域高亮框
+                                    annotated_img = draw_bird_bbox(preview_img.copy(), bird_bbox)
+                                    # 裁剪聚焦到鸟的区域用于展示
+                                    cropped_img = crop_to_bird(annotated_img.copy(), bird_bbox)
+                                    st.image(cropped_img, use_container_width=True)
+                                except Exception:
+                                    st.image(preview_img, use_container_width=True)
+                            else:
+                                st.image(preview_img, use_container_width=True)
+                        else:
+                            st.text("无法预览")
+    
+                        # 低置信度提示
+                        candidates = result.get("candidates", [])
+                        if candidates:
+                            max_similarity = max(c.get("similarity", 0) for c in candidates)
+                            if max_similarity < 50:
+                                st.markdown(
+                                    '<div style="background:rgba(255,149,0,0.12); color:#cc7700; '
+                                    'padding:6px 10px; border-radius:8px; font-size:12px; '
+                                    'margin-bottom:6px; text-align:center;">'
+                                    '⚠️ AI 不太确定，建议人工确认或提供更清晰的照片</div>',
+                                    unsafe_allow_html=True,
+                                )
+    
+                        # 候选鸟种选择（带相似度百分比）
+                        card_index = row_start + col_idx
+                        select_key = f"select_species_{card_index}"
+                        current_name = result.get("chinese_name", "未知")
+    
+                        if candidates and len(candidates) > 0:
+                            # 构建选项列表：「中文名 (相似度%)」
+                            option_labels = []
+                            option_names = []
+                            for candidate in candidates:
+                                cname = candidate.get("chinese_name", "未知")
+                                similarity = candidate.get("similarity", 0)
+                                reason = candidate.get("reason", "")
+                                label = f"{cname}（{similarity}%）- {reason}" if reason else f"{cname}（{similarity}%）"
+                                option_labels.append(label)
+                                option_names.append(cname)
+    
+                            # 如果当前名称不在候选列表中，添加到首位
+                            if current_name not in option_names:
+                                option_labels.insert(0, f"{current_name}（当前）")
+                                option_names.insert(0, current_name)
+    
+                            # 默认选中当前名称
+                            default_index = option_names.index(current_name) if current_name in option_names else 0
+    
+                            selected_label = st.selectbox(
+                                "选择鸟种",
+                                options=option_labels,
+                                index=default_index,
+                                key=select_key,
+                                label_visibility="collapsed",
+                            )
+                            selected_index = option_labels.index(selected_label)
+                            selected_name = option_names[selected_index]
+    
+                            # 获取选中候选种的英文名
+                            selected_english = result.get("english_name", "")
+                            for candidate in candidates:
+                                if candidate.get("chinese_name") == selected_name:
+                                    selected_english = candidate.get("english_name", selected_english)
+                                    break
+    
+                            # 选择了不同鸟种时，显示确认按钮
+                            if selected_name != current_name:
+                                confirm_key = f"confirm_species_{card_index}"
+                                if st.button(f"✅ 确认修改为「{selected_name}」", key=confirm_key, use_container_width=True):
+                                    old_name = current_name
+                                    result["chinese_name"] = selected_name
+                                    result["english_name"] = selected_english
+                                    if card_index < len(results_with_bytes):
+                                        results_with_bytes[card_index]["result"]["chinese_name"] = selected_name
+                                        results_with_bytes[card_index]["result"]["english_name"] = selected_english
+                                    # 同步写回 session_state，确保 rerun 后数据一致
+                                    st.session_state["results_with_bytes"] = results_with_bytes
+                                    # 同步更新 identified_cache
+                                    if "identified_cache" in st.session_state:
+                                        for fkey, cached in st.session_state["identified_cache"].items():
+                                            if cached["result"].get("original_name") == result.get("original_name"):
+                                                cached["result"]["chinese_name"] = selected_name
+                                                cached["result"]["english_name"] = selected_english
+                                                break
+                                    # 更新数据库：无论 _db_saved 标记如何，只要有用户就尝试更新
+                                    current_user = st.session_state.get("user_nickname", "")
+                                    if current_user:
+                                        db_record_id = result.get("_db_record_id")
+                                        record_shoot_date = result.get("shoot_date", "")
+                                        db_updated = update_record_name_in_db(
+                                            db_record_id, selected_name, selected_english,
+                                            user_nickname=current_user,
+                                            old_chinese_name=old_name,
+                                            shoot_date=record_shoot_date,
+                                        )
+                                        if not db_updated:
+                                            st.warning("⚠️ 数据库更新失败，请检查网络连接")
+                                    fetch_user_history.clear()
+                                    fetch_leaderboard.clear()
+                                    fetch_top_photos.clear()
+                                    st.toast(f"✅ 已修改为「{selected_name}」", icon="✏️")
+                                    st.rerun()
+                        else:
+                            # 没有候选列表时，保留文本输入框作为兜底
+                            edit_key = f"edit_name_{card_index}"
+                            new_name = st.text_input(
+                                "鸟种名称",
+                                value=current_name,
+                                key=edit_key,
+                                label_visibility="collapsed",
+                                placeholder="输入鸟种中文名",
+                            )
+                            if new_name and new_name != current_name:
                                 old_name = current_name
-                                result["chinese_name"] = selected_name
-                                result["english_name"] = selected_english
+                                result["chinese_name"] = new_name
                                 if card_index < len(results_with_bytes):
-                                    results_with_bytes[card_index]["result"]["chinese_name"] = selected_name
-                                    results_with_bytes[card_index]["result"]["english_name"] = selected_english
-                                # 同步写回 session_state，确保 rerun 后数据一致
+                                    results_with_bytes[card_index]["result"]["chinese_name"] = new_name
+                                # 同步写回 session_state
                                 st.session_state["results_with_bytes"] = results_with_bytes
-                                # 同步更新 identified_cache
                                 if "identified_cache" in st.session_state:
                                     for fkey, cached in st.session_state["identified_cache"].items():
                                         if cached["result"].get("original_name") == result.get("original_name"):
-                                            cached["result"]["chinese_name"] = selected_name
-                                            cached["result"]["english_name"] = selected_english
+                                            cached["result"]["chinese_name"] = new_name
                                             break
-                                # 更新数据库：无论 _db_saved 标记如何，只要有用户就尝试更新
                                 current_user = st.session_state.get("user_nickname", "")
                                 if current_user:
                                     db_record_id = result.get("_db_record_id")
                                     record_shoot_date = result.get("shoot_date", "")
                                     db_updated = update_record_name_in_db(
-                                        db_record_id, selected_name, selected_english,
+                                        db_record_id, new_name,
                                         user_nickname=current_user,
                                         old_chinese_name=old_name,
                                         shoot_date=record_shoot_date,
@@ -3408,579 +3380,452 @@ if user_nickname:
                                 fetch_user_history.clear()
                                 fetch_leaderboard.clear()
                                 fetch_top_photos.clear()
-                                st.toast(f"✅ 已修改为「{selected_name}」", icon="✏️")
+                                st.toast(f"✅ 已修改为「{new_name}」", icon="✏️")
                                 st.rerun()
-                    else:
-                        # 没有候选列表时，保留文本输入框作为兜底
-                        edit_key = f"edit_name_{card_index}"
-                        new_name = st.text_input(
-                            "鸟种名称",
-                            value=current_name,
-                            key=edit_key,
-                            label_visibility="collapsed",
-                            placeholder="输入鸟种中文名",
-                        )
-                        if new_name and new_name != current_name:
-                            old_name = current_name
-                            result["chinese_name"] = new_name
-                            if card_index < len(results_with_bytes):
-                                results_with_bytes[card_index]["result"]["chinese_name"] = new_name
-                            # 同步写回 session_state
-                            st.session_state["results_with_bytes"] = results_with_bytes
-                            if "identified_cache" in st.session_state:
-                                for fkey, cached in st.session_state["identified_cache"].items():
-                                    if cached["result"].get("original_name") == result.get("original_name"):
-                                        cached["result"]["chinese_name"] = new_name
-                                        break
-                            current_user = st.session_state.get("user_nickname", "")
-                            if current_user:
-                                db_record_id = result.get("_db_record_id")
-                                record_shoot_date = result.get("shoot_date", "")
-                                db_updated = update_record_name_in_db(
-                                    db_record_id, new_name,
-                                    user_nickname=current_user,
-                                    old_chinese_name=old_name,
-                                    shoot_date=record_shoot_date,
-                                )
-                                if not db_updated:
-                                    st.warning("⚠️ 数据库更新失败，请检查网络连接")
-                            fetch_user_history.clear()
-                            fetch_leaderboard.clear()
-                            fetch_top_photos.clear()
-                            st.toast(f"✅ 已修改为「{new_name}」", icon="✏️")
-                            st.rerun()
-                        selected_english = result.get("english_name", "")
+                            selected_english = result.get("english_name", "")
     
-                    st.markdown(
-                        f'<p class="bird-name-en">{result.get("english_name", "")}</p>',
-                        unsafe_allow_html=True,
-                    )
-    
-                    confidence_class = f"confidence-{confidence}"
-                    st.markdown(
-                        f'<span class="taxonomy-pill order-pill">{result.get("order_chinese", "")}</span>'
-                        f'<span class="taxonomy-pill family-pill">{result.get("family_chinese", "")}</span>'
-                        f'<br>'
-                        f'<span class="score-pill score-{score_color}" style="margin-top:6px;">'
-                        f'{score_emoji} {score}</span>'
-                        f'&nbsp;'
-                        f'<span class="confidence-dot {confidence_class}"></span>'
-                        f'<span style="font-size:12px; color:#86868b;">{confidence}</span>',
-                        unsafe_allow_html=True,
-                    )
-    
-                    basis = result.get("identification_basis", "")
-                    if basis:
                         st.markdown(
-                            f'<div style="font-size:12px; color:#6e6e73; margin-top:6px;">'
-                            f'<b style="color:#86868b;">识别依据</b> {basis}</div>',
+                            f'<p class="bird-name-en">{result.get("english_name", "")}</p>',
                             unsafe_allow_html=True,
                         )
     
-                    bird_desc = result.get("bird_description", "")
-                    if bird_desc:
-                        with st.expander("🐦 鸟类介绍"):
+                        confidence_class = f"confidence-{confidence}"
+                        st.markdown(
+                            f'<span class="taxonomy-pill order-pill">{result.get("order_chinese", "")}</span>'
+                            f'<span class="taxonomy-pill family-pill">{result.get("family_chinese", "")}</span>'
+                            f'<br>'
+                            f'<span class="score-pill score-{score_color}" style="margin-top:6px;">'
+                            f'{score_emoji} {score}</span>'
+                            f'&nbsp;'
+                            f'<span class="confidence-dot {confidence_class}"></span>'
+                            f'<span style="font-size:12px; color:#86868b;">{confidence}</span>',
+                            unsafe_allow_html=True,
+                        )
+    
+                        basis = result.get("identification_basis", "")
+                        if basis:
                             st.markdown(
-                                f'<div style="font-size:12px; color:#3a3a3c; line-height:1.7;">'
-                                f'{bird_desc}</div>',
+                                f'<div style="font-size:12px; color:#6e6e73; margin-top:6px;">'
+                                f'<b style="color:#86868b;">识别依据</b> {basis}</div>',
                                 unsafe_allow_html=True,
                             )
     
-                    shoot_date = result.get("shoot_date", "")
-                    if shoot_date and len(shoot_date) >= 8:
-                        formatted_date = f"{shoot_date[:4]}.{shoot_date[4:6]}.{shoot_date[6:8]}"
+                        bird_desc = result.get("bird_description", "")
+                        if bird_desc:
+                            with st.expander("🐦 鸟类介绍"):
+                                st.markdown(
+                                    f'<div style="font-size:12px; color:#3a3a3c; line-height:1.7;">'
+                                    f'{bird_desc}</div>',
+                                    unsafe_allow_html=True,
+                                )
+    
+                        shoot_date = result.get("shoot_date", "")
+                        if shoot_date and len(shoot_date) >= 8:
+                            formatted_date = f"{shoot_date[:4]}.{shoot_date[4:6]}.{shoot_date[6:8]}"
+                            st.markdown(
+                                f'<div style="font-size:12px; color:#86868b; margin-top:4px;">'
+                                f'📅 {formatted_date}</div>',
+                                unsafe_allow_html=True,
+                            )
+    
+                        dimensions = [
+                            ("清晰", result.get("score_sharpness", 0), 20),
+                            ("构图", result.get("score_composition", 0), 20),
+                            ("光线", result.get("score_lighting", 0), 20),
+                            ("背景", result.get("score_background", 0), 15),
+                            ("姿态", result.get("score_pose", 0), 15),
+                            ("艺术", result.get("score_artistry", 0), 10),
+                        ]
+                        bars_html = ""
+                        for dim_name, dim_score, dim_max in dimensions:
+                            percentage = (dim_score / dim_max * 100) if dim_max > 0 else 0
+                            if percentage >= 85:
+                                bar_color = "#34c759"
+                            elif percentage >= 70:
+                                bar_color = "#007aff"
+                            elif percentage >= 50:
+                                bar_color = "#ff9500"
+                            else:
+                                bar_color = "#ff3b30"
+                            bars_html += (
+                                f'<div style="display:flex; align-items:center; margin:2px 0; font-size:11px;">'
+                                f'<span style="width:28px; color:#86868b; font-weight:500; flex-shrink:0;">{dim_name}</span>'
+                                f'<div style="flex:1; height:6px; background:rgba(0,0,0,0.06); border-radius:3px; margin:0 4px; overflow:hidden;">'
+                                f'<div style="width:{percentage}%; height:100%; background:{bar_color}; border-radius:3px;"></div></div>'
+                                f'<span style="width:32px; text-align:right; color:#1d1d1f; font-weight:600; font-size:11px;">{dim_score}/{dim_max}</span>'
+                                f'</div>'
+                            )
                         st.markdown(
-                            f'<div style="font-size:12px; color:#86868b; margin-top:4px;">'
-                            f'📅 {formatted_date}</div>',
+                            f'<div style="background:rgba(0,0,0,0.02); border-radius:10px; padding:8px 10px; margin-top:6px;">'
+                            f'{bars_html}</div>',
                             unsafe_allow_html=True,
                         )
     
-                    dimensions = [
-                        ("清晰", result.get("score_sharpness", 0), 20),
-                        ("构图", result.get("score_composition", 0), 20),
-                        ("光线", result.get("score_lighting", 0), 20),
-                        ("背景", result.get("score_background", 0), 15),
-                        ("姿态", result.get("score_pose", 0), 15),
-                        ("艺术", result.get("score_artistry", 0), 10),
-                    ]
-                    bars_html = ""
-                    for dim_name, dim_score, dim_max in dimensions:
-                        percentage = (dim_score / dim_max * 100) if dim_max > 0 else 0
-                        if percentage >= 85:
-                            bar_color = "#34c759"
-                        elif percentage >= 70:
-                            bar_color = "#007aff"
-                        elif percentage >= 50:
-                            bar_color = "#ff9500"
-                        else:
-                            bar_color = "#ff3b30"
-                        bars_html += (
-                            f'<div style="display:flex; align-items:center; margin:2px 0; font-size:11px;">'
-                            f'<span style="width:28px; color:#86868b; font-weight:500; flex-shrink:0;">{dim_name}</span>'
-                            f'<div style="flex:1; height:6px; background:rgba(0,0,0,0.06); border-radius:3px; margin:0 4px; overflow:hidden;">'
-                            f'<div style="width:{percentage}%; height:100%; background:{bar_color}; border-radius:3px;"></div></div>'
-                            f'<span style="width:32px; text-align:right; color:#1d1d1f; font-weight:600; font-size:11px;">{dim_score}/{dim_max}</span>'
-                            f'</div>'
-                        )
-                    st.markdown(
-                        f'<div style="background:rgba(0,0,0,0.02); border-radius:10px; padding:8px 10px; margin-top:6px;">'
-                        f'{bars_html}</div>',
-                        unsafe_allow_html=True,
-                    )
+                        score_comment = result.get("score_comment", "")
+                        if score_comment:
+                            st.markdown(
+                                f'<div style="font-size:12px; color:#6e6e73; font-style:italic; '
+                                f'margin-top:6px; padding:6px 8px; background:rgba(0,0,0,0.03); '
+                                f'border-radius:8px;">💬 {score_comment}</div>',
+                                unsafe_allow_html=True,
+                            )
     
-                    score_comment = result.get("score_comment", "")
-                    if score_comment:
-                        st.markdown(
-                            f'<div style="font-size:12px; color:#6e6e73; font-style:italic; '
-                            f'margin-top:6px; padding:6px 8px; background:rgba(0,0,0,0.03); '
-                            f'border-radius:8px;">💬 {score_comment}</div>',
-                            unsafe_allow_html=True,
-                        )
-    
-        # 下载区域
-        if "zip_bytes" in st.session_state:
-            st.markdown('<div class="results-divider"></div>', unsafe_allow_html=True)
-            st.download_button(
-                label="📦 下载整理后的照片",
-                data=st.session_state["zip_bytes"],
-                file_name="BirdEye_影禽_鸟类照片整理.zip",
-                mime="application/zip",
-                use_container_width=True,
-            )
-
-
-# ============================================================
-# 第三区：佳作榜（社区优秀摄影作品）
-# ============================================================
-if supabase_client:
-    st.markdown(
-        '<div class="section-block" data-section="gallery">'
-        '<div class="section-header">'
-        '<div class="section-icon section-icon-gallery">📸</div>'
-        '<div>'
-        '<p class="section-title">佳作榜 · 社区精选</p>'
-        '<p class="section-subtitle">来自社区的优秀鸟类摄影作品</p>'
-        '</div>'
-        '<span class="section-toggle">▼</span>'
-        '</div></div>',
-        unsafe_allow_html=True,
-    )
-    top_photos = fetch_top_photos(limit=20)
-    if top_photos:
-        # 分成两行显示
-        row1_photos = top_photos[:10]
-        row2_photos = top_photos[10:]
-
-        for row_photos in [row1_photos, row2_photos]:
-            if not row_photos:
-                continue
-            gallery_cards_html = ""
-            for photo in row_photos:
-                thumb_b64 = photo.get("thumbnail_base64", "")
-                photo_score = photo.get("score", 0)
-                score_color = get_score_color(photo_score)
-                bird_name = photo.get("chinese_name", "未知")
-                photographer = photo.get("user_nickname", "匿名")
-
-                if thumb_b64:
-                    img_html = (
-                        f'<img src="data:image/jpeg;base64,{thumb_b64}" '
-                        f'style="width:100%;height:160px;object-fit:cover;'
-                        f'border-radius:10px 10px 0 0;" loading="lazy" alt="{bird_name}">'
-                    )
-                else:
-                    img_html = (
-                        '<div style="width:100%;height:160px;'
-                        'background:linear-gradient(135deg,#667eea,#764ba2);'
-                        'border-radius:10px 10px 0 0;display:flex;'
-                        'align-items:center;justify-content:center;'
-                        'font-size:40px;">📷</div>'
-                    )
-
-                gallery_cards_html += (
-                    f'<div style="min-width:160px;max-width:160px;background:#fff;'
-                    f'border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,0.08);'
-                    f'flex-shrink:0;overflow:hidden;">'
-                    f'{img_html}'
-                    f'<div style="padding:8px 10px;">'
-                    f'<div style="font-size:13px;font-weight:600;color:#1d1d1f;'
-                    f'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'
-                    f'{bird_name}</div>'
-                    f'<div style="display:flex;align-items:center;justify-content:space-between;'
-                    f'margin-top:4px;">'
-                    f'<span style="font-size:11px;color:#86868b;">📷 {photographer}</span>'
-                    f'<span class="score-pill score-{score_color}" '
-                    f'style="font-size:10px;padding:1px 6px;">'
-                    f'{get_score_emoji(photo_score)} {photo_score}</span>'
-                    f'</div></div></div>'
+            # 下载区域
+            if "zip_bytes" in st.session_state:
+                st.markdown('<div class="results-divider"></div>', unsafe_allow_html=True)
+                st.download_button(
+                    label="📦 下载整理后的照片",
+                    data=st.session_state["zip_bytes"],
+                    file_name="BirdEye_影禽_鸟类照片整理.zip",
+                    mime="application/zip",
+                    use_container_width=True,
                 )
 
+
+    else:
+        st.info("📷 请先设置昵称，即可上传照片识别鸟种")
+
+# ============================================================
+# ---- Tab 3: 佳作榜 ----
+with tab_gallery:
+    if supabase_client:
+        st.markdown(
+            '<div class="section-block" data-section="gallery">'
+            '<div class="section-header">'
+            '<div class="section-icon section-icon-gallery">📸</div>'
+            '<div>'
+            '<p class="section-title">佳作榜 · 社区精选</p>'
+            '<p class="section-subtitle">来自社区的优秀鸟类摄影作品</p>'
+            '</div>'
+            '<span class="section-toggle">▼</span>'
+            '</div></div>',
+            unsafe_allow_html=True,
+        )
+        top_photos = fetch_top_photos(limit=20)
+        if top_photos:
+            # 分成两行显示
+            row1_photos = top_photos[:10]
+            row2_photos = top_photos[10:]
+
+            for row_photos in [row1_photos, row2_photos]:
+                if not row_photos:
+                    continue
+                gallery_cards_html = ""
+                for photo in row_photos:
+                    thumb_b64 = photo.get("thumbnail_base64", "")
+                    photo_score = photo.get("score", 0)
+                    score_color = get_score_color(photo_score)
+                    bird_name = photo.get("chinese_name", "未知")
+                    photographer = photo.get("user_nickname", "匿名")
+
+                    if thumb_b64:
+                        img_html = (
+                            f'<img src="data:image/jpeg;base64,{thumb_b64}" '
+                            f'style="width:100%;height:160px;object-fit:cover;'
+                            f'border-radius:10px 10px 0 0;" loading="lazy" alt="{bird_name}">'
+                        )
+                    else:
+                        img_html = (
+                            '<div style="width:100%;height:160px;'
+                            'background:linear-gradient(135deg,#667eea,#764ba2);'
+                            'border-radius:10px 10px 0 0;display:flex;'
+                            'align-items:center;justify-content:center;'
+                            'font-size:40px;">📷</div>'
+                        )
+
+                    gallery_cards_html += (
+                        f'<div style="min-width:160px;max-width:160px;background:#fff;'
+                        f'border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,0.08);'
+                        f'flex-shrink:0;overflow:hidden;">'
+                        f'{img_html}'
+                        f'<div style="padding:8px 10px;">'
+                        f'<div style="font-size:13px;font-weight:600;color:#1d1d1f;'
+                        f'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'
+                        f'{bird_name}</div>'
+                        f'<div style="display:flex;align-items:center;justify-content:space-between;'
+                        f'margin-top:4px;">'
+                        f'<span style="font-size:11px;color:#86868b;">📷 {photographer}</span>'
+                        f'<span class="score-pill score-{score_color}" '
+                        f'style="font-size:10px;padding:1px 6px;">'
+                        f'{get_score_emoji(photo_score)} {photo_score}</span>'
+                        f'</div></div></div>'
+                    )
+
+                st.markdown(
+                    f'<div style="display:flex;gap:10px;overflow-x:auto;'
+                    f'padding:4px 0 8px;-webkit-overflow-scrolling:touch;">'
+                    f'{gallery_cards_html}</div>',
+                    unsafe_allow_html=True,
+                )
+        else:
             st.markdown(
-                f'<div style="display:flex;gap:10px;overflow-x:auto;'
-                f'padding:4px 0 8px;-webkit-overflow-scrolling:touch;">'
-                f'{gallery_cards_html}</div>',
+                '<p style="text-align:center; color:#86868b; font-size:13px; padding:16px 0;">'
+                '还没有佳作，上传照片成为第一个吧 📷</p>',
                 unsafe_allow_html=True,
             )
+
     else:
+        st.info("📸 佳作榜加载中…")
+
+# ============================================================
+# ---- Tab 4: 观鸟记录 ----
+with tab_history:
+    if supabase_client and user_nickname:
+        # 先处理待删除的记录（确保统计数据和列表都是最新的）
+        pending_delete_key = "_pending_delete_record_id"
+        if pending_delete_key in st.session_state:
+            delete_id = st.session_state.pop(pending_delete_key)
+            if delete_record_from_db(delete_id):
+                fetch_user_history.clear()
+                fetch_leaderboard.clear()
+                fetch_top_photos.clear()
+                st.toast("✅ 已删除", icon="✅")
+            else:
+                st.toast("⚠️ 删除失败，请检查数据库权限", icon="⚠️")
+
+        # ---- 我的观鸟记录 ----
         st.markdown(
-            '<p style="text-align:center; color:#86868b; font-size:13px; padding:16px 0;">'
-            '还没有佳作，上传照片成为第一个吧 📷</p>',
+            '<div class="section-header">'
+            '<div class="section-icon section-icon-history">📚</div>'
+            '<div>'
+            '<p class="section-title">我的观鸟记录</p>'
+            '<p class="section-subtitle">你的观鸟历程和成就</p>'
+            '</div>'
+            '<span class="section-toggle">▼</span>'
+            '</div></div>',
             unsafe_allow_html=True,
         )
 
-# ============================================================
-# 底部：我的观鸟记录 + 排行榜 + 导入功能（单栏布局）
-# ============================================================
-user_nickname = st.session_state["user_nickname"]
+        history_records = fetch_user_history(supabase_client, user_nickname)
+        user_stats = fetch_user_stats_from_records(history_records)
+        if user_stats and user_stats.get("total", 0) > 0:
+            imported_count = user_stats.get("imported_species", 0)
+            photo_total = user_stats.get("photo_total", 0)
 
-if supabase_client and user_nickname:
-    st.markdown("<br>", unsafe_allow_html=True)
+            if imported_count > 0:
+                hist_stat_cols = st.columns(5, gap="small")
+                hist_stat_data = [
+                    (str(photo_total), "📷 拍摄识别"),
+                    (str(imported_count), "📥 导入鸟种"),
+                    (str(user_stats["species"]), "🐦 总鸟种"),
+                    (str(user_stats["avg_score"]), "⭐ 平均分"),
+                    (str(user_stats["best_score"]), "🏆 最高分"),
+                ]
+            else:
+                hist_stat_cols = st.columns(4, gap="medium")
+                hist_stat_data = [
+                    (str(user_stats["total"]), "累计识别"),
+                    (str(user_stats["species"]), "鸟种数"),
+                    (str(user_stats["avg_score"]), "平均分"),
+                    (str(user_stats["best_score"]), "最高分"),
+                ]
+            for col, (value, label) in zip(hist_stat_cols, hist_stat_data):
+                with col:
+                    st.markdown(
+                        f'<div class="stat-card">'
+                        f'<div class="stat-value">{value}</div>'
+                        f'<div class="stat-label">{label}</div>'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
 
-    # 先处理待删除的记录（确保统计数据和列表都是最新的）
-    pending_delete_key = "_pending_delete_record_id"
-    if pending_delete_key in st.session_state:
-        delete_id = st.session_state.pop(pending_delete_key)
-        if delete_record_from_db(delete_id):
-            fetch_user_history.clear()
-            fetch_leaderboard.clear()
-            fetch_top_photos.clear()
-            st.toast("✅ 已删除", icon="✅")
-        else:
-            st.toast("⚠️ 删除失败，请检查数据库权限", icon="⚠️")
+            st.markdown("<br>", unsafe_allow_html=True)
 
-    # ---- 我的观鸟记录 ----
-    st.markdown(
-        '<div class="section-block" data-section="history">'
-        '<div class="section-header">'
-        '<div class="section-icon section-icon-history">📚</div>'
-        '<div>'
-        '<p class="section-title">我的观鸟记录</p>'
-        '<p class="section-subtitle">你的观鸟历程和成就</p>'
-        '</div>'
-        '<span class="section-toggle">▼</span>'
-        '</div></div>',
-        unsafe_allow_html=True,
-    )
+            # 历史记录列表
+            photo_records = [r for r in history_records if r.get("confidence") != "imported"]
+            imported_records = [r for r in history_records if r.get("confidence") == "imported"]
 
-    history_records = fetch_user_history(supabase_client, user_nickname)
-    user_stats = fetch_user_stats_from_records(history_records)
-    if user_stats and user_stats.get("total", 0) > 0:
-        imported_count = user_stats.get("imported_species", 0)
-        photo_total = user_stats.get("photo_total", 0)
+            if history_records:
+                # 拍照识别记录
+                if photo_records:
+                    with st.expander(f"📷 拍摄识别记录（{len(photo_records)} 条）", expanded=True):
+                        for row_start in range(0, len(photo_records), 4):
+                            row_items = photo_records[row_start:row_start + 4]
+                            hist_cols = st.columns(4)
+                            for col_idx, record in enumerate(row_items):
+                                with hist_cols[col_idx]:
+                                    thumb_b64 = record.get("thumbnail_base64", "")
+                                    if thumb_b64:
+                                        st.markdown(
+                                            f'<img src="data:image/jpeg;base64,{thumb_b64}" '
+                                            f'style="width:100%; border-radius:10px; object-fit:contain;" '
+                                            f'loading="lazy" alt="bird">',
+                                            unsafe_allow_html=True,
+                                        )
+                                    else:
+                                        st.markdown(
+                                            '<div style="height:80px; background:rgba(0,0,0,0.04); '
+                                            'border-radius:10px; display:flex; align-items:center; '
+                                            'justify-content:center; color:#86868b; font-size:20px;">🐦</div>',
+                                            unsafe_allow_html=True,
+                                        )
 
-        if imported_count > 0:
-            hist_stat_cols = st.columns(5, gap="small")
-            hist_stat_data = [
-                (str(photo_total), "📷 拍摄识别"),
-                (str(imported_count), "📥 导入鸟种"),
-                (str(user_stats["species"]), "🐦 总鸟种"),
-                (str(user_stats["avg_score"]), "⭐ 平均分"),
-                (str(user_stats["best_score"]), "🏆 最高分"),
-            ]
-        else:
-            hist_stat_cols = st.columns(4, gap="medium")
-            hist_stat_data = [
-                (str(user_stats["total"]), "累计识别"),
-                (str(user_stats["species"]), "鸟种数"),
-                (str(user_stats["avg_score"]), "平均分"),
-                (str(user_stats["best_score"]), "最高分"),
-            ]
-        for col, (value, label) in zip(hist_stat_cols, hist_stat_data):
-            with col:
+                                    hist_score = record.get("score", 0)
+                                    hist_score_color = get_score_color(hist_score)
+                                    st.markdown(
+                                        f'<p style="font-size:13px; font-weight:600; color:#1d1d1f; '
+                                        f'margin:4px 0 2px; line-height:1.2;">{record.get("chinese_name", "未知")}</p>'
+                                        f'<span class="score-pill score-{hist_score_color}" '
+                                        f'style="font-size:11px; padding:2px 8px;">'
+                                        f'{get_score_emoji(hist_score)} {hist_score}</span>',
+                                        unsafe_allow_html=True,
+                                    )
+
+                                    created_at = record.get("created_at", "")
+                                    if created_at:
+                                        try:
+                                            date_display = created_at[:10]
+                                            st.markdown(
+                                                f'<p style="font-size:11px; color:#86868b; margin:2px 0 8px;">'
+                                                f'📅 {date_display}</p>',
+                                                unsafe_allow_html=True,
+                                            )
+                                        except Exception:
+                                            pass
+
+                                    record_id = record.get("id")
+                                    if record_id:
+                                        if st.button("🗑️", key=f"del_{record_id}",
+                                                     help="删除这条记录",
+                                                     use_container_width=True):
+                                            st.session_state[pending_delete_key] = record_id
+                                            st.rerun()
+
+                # 导入的观鸟记录
+                if imported_records:
+                    seen_imported = set()
+                    unique_imported = []
+                    for record in imported_records:
+                        name = record.get("chinese_name", "")
+                        if name and name not in seen_imported:
+                            seen_imported.add(name)
+                            unique_imported.append(record)
+
+                    with st.expander(f"📥 导入的观鸟记录（{len(unique_imported)} 个鸟种）", expanded=False):
+                        tags_html = ""
+                        for record in unique_imported:
+                            bird_name = record.get("chinese_name", "未知")
+                            english_name = record.get("english_name", "")
+                            source_info = record.get("identification_basis", "")
+                            scientific_name = ""
+                            if "| " in source_info:
+                                scientific_name = source_info.split("| ", 1)[1].strip()
+
+                            subtitle = ""
+                            if english_name:
+                                subtitle = english_name
+                            elif scientific_name:
+                                subtitle = scientific_name
+
+                            tags_html += (
+                                f'<div style="display:inline-flex; align-items:center; gap:4px; '
+                                f'padding:6px 12px; margin:3px; background:rgba(102,126,234,0.08); '
+                                f'border-radius:20px; font-size:13px;">'
+                                f'<span style="font-weight:600; color:#1d1d1f;">{bird_name}</span>'
+                            )
+                            if subtitle:
+                                tags_html += (
+                                    f'<span style="font-size:11px; color:#86868b; '
+                                    f'font-style:italic;">{subtitle}</span>'
+                                )
+                            tags_html += '</div>'
+
+                        st.markdown(
+                            f'<div style="line-height:2.2;">{tags_html}</div>',
+                            unsafe_allow_html=True,
+                        )
+
+                        if st.button("🗑️ 清除所有导入记录", key="clear_imported",
+                                     use_container_width=True):
+                            cleared_count = 0
+                            for record in imported_records:
+                                record_id = record.get("id")
+                                if record_id and delete_record_from_db(record_id):
+                                    cleared_count += 1
+                            if cleared_count > 0:
+                                fetch_user_history.clear()
+                                fetch_leaderboard.clear()
+                                st.toast(f"✅ 已清除 {cleared_count} 条导入记录", icon="✅")
+                                st.rerun()
+            else:
                 st.markdown(
-                    f'<div class="stat-card">'
-                    f'<div class="stat-value">{value}</div>'
-                    f'<div class="stat-label">{label}</div>'
-                    f'</div>',
+                    '<p style="text-align:center; color:#86868b; font-size:14px; padding:20px 0;">'
+                    '还没有识别记录，上传照片开始你的观鸟之旅吧 🐦</p>',
                     unsafe_allow_html=True,
                 )
 
-        st.markdown("<br>", unsafe_allow_html=True)
+    else:
+        st.info("📚 请先设置昵称，即可查看观鸟记录")
 
-        # 历史记录列表
-        photo_records = [r for r in history_records if r.get("confidence") != "imported"]
-        imported_records = [r for r in history_records if r.get("confidence") == "imported"]
+# ---- Tab 5: 排行榜 ----
+with tab_rank:
+    if supabase_client:
+        st.markdown(
+            '<div class="section-block" data-section="rank" style="padding-bottom:0;">'
+            '<div class="section-header">'
+            '<div class="section-icon section-icon-rank">🏆</div>'
+            '<div>'
+            '<p class="section-title">观鸟排行榜</p>'
+            '<p class="section-subtitle">看看谁拍的鸟种最多</p>'
+            '</div>'
+            '<span class="section-toggle">▼</span>'
+            '</div></div>',
+            unsafe_allow_html=True,
+        )
 
-        if history_records:
-            # 拍照识别记录
-            if photo_records:
-                with st.expander(f"📷 拍摄识别记录（{len(photo_records)} 条）", expanded=True):
-                    for row_start in range(0, len(photo_records), 4):
-                        row_items = photo_records[row_start:row_start + 4]
-                        hist_cols = st.columns(4)
-                        for col_idx, record in enumerate(row_items):
-                            with hist_cols[col_idx]:
-                                thumb_b64 = record.get("thumbnail_base64", "")
-                                if thumb_b64:
-                                    st.markdown(
-                                        f'<img src="data:image/jpeg;base64,{thumb_b64}" '
-                                        f'style="width:100%; border-radius:10px; object-fit:contain;" '
-                                        f'loading="lazy" alt="bird">',
-                                        unsafe_allow_html=True,
-                                    )
-                                else:
-                                    st.markdown(
-                                        '<div style="height:80px; background:rgba(0,0,0,0.04); '
-                                        'border-radius:10px; display:flex; align-items:center; '
-                                        'justify-content:center; color:#86868b; font-size:20px;">🐦</div>',
-                                        unsafe_allow_html=True,
-                                    )
+        leaderboard = fetch_leaderboard()
+        if leaderboard:
+            items_html = ""
+            for rank, entry in enumerate(leaderboard, 1):
+                if rank == 1:
+                    rank_html = '<span class="leaderboard-rank">🥇</span>'
+                elif rank == 2:
+                    rank_html = '<span class="leaderboard-rank">🥈</span>'
+                elif rank == 3:
+                    rank_html = '<span class="leaderboard-rank">🥉</span>'
+                else:
+                    rank_html = f'<span class="leaderboard-rank-num">{rank}</span>'
 
-                                hist_score = record.get("score", 0)
-                                hist_score_color = get_score_color(hist_score)
-                                st.markdown(
-                                    f'<p style="font-size:13px; font-weight:600; color:#1d1d1f; '
-                                    f'margin:4px 0 2px; line-height:1.2;">{record.get("chinese_name", "未知")}</p>'
-                                    f'<span class="score-pill score-{hist_score_color}" '
-                                    f'style="font-size:11px; padding:2px 8px;">'
-                                    f'{get_score_emoji(hist_score)} {hist_score}</span>',
-                                    unsafe_allow_html=True,
-                                )
+                is_current_user = entry["nickname"] == user_nickname
+                item_class = "leaderboard-item leaderboard-item-current" if is_current_user else "leaderboard-item"
+                name_class = "leaderboard-name leaderboard-name-current" if is_current_user else "leaderboard-name"
 
-                                created_at = record.get("created_at", "")
-                                if created_at:
-                                    try:
-                                        date_display = created_at[:10]
-                                        st.markdown(
-                                            f'<p style="font-size:11px; color:#86868b; margin:2px 0 8px;">'
-                                            f'📅 {date_display}</p>',
-                                            unsafe_allow_html=True,
-                                        )
-                                    except Exception:
-                                        pass
+                species_list = entry.get("species_list", [])
+                species_preview = "、".join(species_list[:8])
+                if len(species_list) > 8:
+                    species_preview += f" 等{len(species_list)}种"
 
-                                record_id = record.get("id")
-                                if record_id:
-                                    if st.button("🗑️", key=f"del_{record_id}",
-                                                 help="删除这条记录",
-                                                 use_container_width=True):
-                                        st.session_state[pending_delete_key] = record_id
-                                        st.rerun()
+                items_html += (
+                    f'<div class="{item_class}">'
+                    f'{rank_html}'
+                    f'<div style="flex:1;min-width:0;">'
+                    f'<p class="{name_class}">{entry["nickname"]}</p>'
+                    f'<p class="leaderboard-stats">'
+                    f'🐦 {entry["species"]}种 · 📷 {entry["total"]}张 · ⭐ {entry["avg_score"]}</p>'
+                    f'<p style="font-size:11px;color:#aaa;margin:2px 0 0;'
+                    f'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'
+                    f'{species_preview}</p>'
+                    f'</div>'
+                    f'</div>'
+                )
 
-            # 导入的观鸟记录
-            if imported_records:
-                seen_imported = set()
-                unique_imported = []
-                for record in imported_records:
-                    name = record.get("chinese_name", "")
-                    if name and name not in seen_imported:
-                        seen_imported.add(name)
-                        unique_imported.append(record)
-
-                with st.expander(f"📥 导入的观鸟记录（{len(unique_imported)} 个鸟种）", expanded=False):
-                    tags_html = ""
-                    for record in unique_imported:
-                        bird_name = record.get("chinese_name", "未知")
-                        english_name = record.get("english_name", "")
-                        source_info = record.get("identification_basis", "")
-                        scientific_name = ""
-                        if "| " in source_info:
-                            scientific_name = source_info.split("| ", 1)[1].strip()
-
-                        subtitle = ""
-                        if english_name:
-                            subtitle = english_name
-                        elif scientific_name:
-                            subtitle = scientific_name
-
-                        tags_html += (
-                            f'<div style="display:inline-flex; align-items:center; gap:4px; '
-                            f'padding:6px 12px; margin:3px; background:rgba(102,126,234,0.08); '
-                            f'border-radius:20px; font-size:13px;">'
-                            f'<span style="font-weight:600; color:#1d1d1f;">{bird_name}</span>'
-                        )
-                        if subtitle:
-                            tags_html += (
-                                f'<span style="font-size:11px; color:#86868b; '
-                                f'font-style:italic;">{subtitle}</span>'
-                            )
-                        tags_html += '</div>'
-
-                    st.markdown(
-                        f'<div style="line-height:2.2;">{tags_html}</div>',
-                        unsafe_allow_html=True,
-                    )
-
-                    if st.button("🗑️ 清除所有导入记录", key="clear_imported",
-                                 use_container_width=True):
-                        cleared_count = 0
-                        for record in imported_records:
-                            record_id = record.get("id")
-                            if record_id and delete_record_from_db(record_id):
-                                cleared_count += 1
-                        if cleared_count > 0:
-                            fetch_user_history.clear()
-                            fetch_leaderboard.clear()
-                            st.toast(f"✅ 已清除 {cleared_count} 条导入记录", icon="✅")
-                            st.rerun()
+            st.markdown(
+                f'<div class="leaderboard-body">{items_html}</div>',
+                unsafe_allow_html=True,
+            )
         else:
             st.markdown(
-                '<p style="text-align:center; color:#86868b; font-size:14px; padding:20px 0;">'
-                '还没有识别记录，上传照片开始你的观鸟之旅吧 🐦</p>',
+                '<div class="leaderboard-body">'
+                '<p style="text-align:center; color:#86868b; font-size:13px; padding:20px 0;">'
+                '暂无排行数据</p>'
+                '</div>',
                 unsafe_allow_html=True,
             )
 
-    # ---- 观鸟排行榜 ----
-    st.markdown(
-        '<div class="section-block" data-section="rank" style="padding-bottom:0;">'
-        '<div class="section-header">'
-        '<div class="section-icon section-icon-rank">🏆</div>'
-        '<div>'
-        '<p class="section-title">观鸟排行榜</p>'
-        '<p class="section-subtitle">看看谁拍的鸟种最多</p>'
-        '</div>'
-        '<span class="section-toggle">▼</span>'
-        '</div></div>',
-        unsafe_allow_html=True,
-    )
-
-    leaderboard = fetch_leaderboard()
-    if leaderboard:
-        items_html = ""
-        for rank, entry in enumerate(leaderboard, 1):
-            if rank == 1:
-                rank_html = '<span class="leaderboard-rank">🥇</span>'
-            elif rank == 2:
-                rank_html = '<span class="leaderboard-rank">🥈</span>'
-            elif rank == 3:
-                rank_html = '<span class="leaderboard-rank">🥉</span>'
-            else:
-                rank_html = f'<span class="leaderboard-rank-num">{rank}</span>'
-
-            is_current_user = entry["nickname"] == user_nickname
-            item_class = "leaderboard-item leaderboard-item-current" if is_current_user else "leaderboard-item"
-            name_class = "leaderboard-name leaderboard-name-current" if is_current_user else "leaderboard-name"
-
-            species_list = entry.get("species_list", [])
-            species_preview = "、".join(species_list[:8])
-            if len(species_list) > 8:
-                species_preview += f" 等{len(species_list)}种"
-
-            items_html += (
-                f'<div class="{item_class}">'
-                f'{rank_html}'
-                f'<div style="flex:1;min-width:0;">'
-                f'<p class="{name_class}">{entry["nickname"]}</p>'
-                f'<p class="leaderboard-stats">'
-                f'🐦 {entry["species"]}种 · 📷 {entry["total"]}张 · ⭐ {entry["avg_score"]}</p>'
-                f'<p style="font-size:11px;color:#aaa;margin:2px 0 0;'
-                f'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'
-                f'{species_preview}</p>'
-                f'</div>'
-                f'</div>'
-            )
-
-        st.markdown(
-            f'<div class="leaderboard-body">{items_html}</div>',
-            unsafe_allow_html=True,
-        )
+    # ============================================================
     else:
-        st.markdown(
-            '<div class="leaderboard-body">'
-            '<p style="text-align:center; color:#86868b; font-size:13px; padding:20px 0;">'
-            '暂无排行数据</p>'
-            '</div>',
-            unsafe_allow_html=True,
-        )
+        st.info("🏆 排行榜加载中…")
 
-# ============================================================
-# 区块收起/展开 JS 脚本（通过 components.html 注入到 iframe，操作父页面 DOM）
-# ============================================================
-import streamlit.components.v1 as components
-components.html(
-    """
-    <script>
-    (function() {
-        var doc = window.parent.document;
-
-        function findBlockWrapper(block) {
-            // Strategy: walk up from the .section-block element until we find
-            // an element whose parent has data-testid containing 'VerticalBlock'
-            // or 'column', or whose parent has multiple children (the vertical block).
-            var node = block;
-            for (var i = 0; i < 15; i++) {
-                if (!node.parentElement) break;
-                var p = node.parentElement;
-                var testid = p.getAttribute('data-testid') || '';
-                // Match stVerticalBlock, stVerticalBlockBorderWrapper, block-container, etc.
-                if (testid.indexOf('VerticalBlock') >= 0 ||
-                    testid === 'stMainBlockContainer' ||
-                    testid === 'block-container') {
-                    return node;
-                }
-                // Also match by class name patterns
-                var cls = p.className || '';
-                if (cls.indexOf('block-container') >= 0 ||
-                    cls.indexOf('stMainBlockContainer') >= 0) {
-                    return node;
-                }
-                node = p;
-            }
-            // Fallback: try to find the closest ancestor with data-testid="stVerticalBlock"
-            var vertBlock = block.closest('[data-testid*="VerticalBlock"]');
-            if (vertBlock) {
-                // Find which direct child of vertBlock contains our block
-                var children = Array.from(vertBlock.children);
-                for (var j = 0; j < children.length; j++) {
-                    if (children[j].contains(block)) return children[j];
-                }
-            }
-            return block.parentElement ? block.parentElement.parentElement || block.parentElement : block;
-        }
-
-        function initToggles() {
-            var blocks = doc.querySelectorAll('.section-block[data-section]');
-            blocks.forEach(function(block) {
-                if (block.getAttribute('data-toggle-ready')) return;
-                block.setAttribute('data-toggle-ready', '1');
-                block.addEventListener('click', function(e) {
-                    var toggle = block.querySelector('.section-toggle');
-                    var wrapper = findBlockWrapper(block);
-                    if (!wrapper || !wrapper.parentElement) return;
-                    var parent = wrapper.parentElement;
-                    var kids = Array.from(parent.children);
-                    var idx = kids.indexOf(wrapper);
-                    if (idx < 0) return;
-                    var targets = [];
-                    for (var i = idx + 1; i < kids.length; i++) {
-                        var child = kids[i];
-                        // Stop at next section-block
-                        if (child.querySelector && child.querySelector('.section-block[data-section]')) break;
-                        // Skip the components.html iframe container
-                        if (child.querySelector && child.querySelector('iframe')) {
-                            var iframes = child.querySelectorAll('iframe');
-                            var isToggleScript = false;
-                            iframes.forEach(function(ifr) {
-                                if (ifr.height === '0' || ifr.style.height === '0px') isToggleScript = true;
-                            });
-                            if (isToggleScript) continue;
-                        }
-                        targets.push(child);
-                    }
-                    if (targets.length === 0) return;
-                    var hidden = targets[0].style.display === 'none';
-                    targets.forEach(function(t) { t.style.display = hidden ? '' : 'none'; });
-                    if (toggle) {
-                        toggle.textContent = hidden ? '▼' : '▶';
-                        if (hidden) toggle.classList.remove('collapsed');
-                        else toggle.classList.add('collapsed');
-                    }
-                });
-            });
-        }
-        // Init after page loads, and re-init on DOM changes
-        setTimeout(initToggles, 1500);
-        setTimeout(initToggles, 3000);
-        setTimeout(initToggles, 6000);
-        var obs = new MutationObserver(function() { setTimeout(initToggles, 800); });
-        obs.observe(doc.body, {childList: true, subtree: true});
-    })();
-    </script>
-    """,
-    height=0,
-)
-
-# ============================================================
 # 页脚
 # ============================================================
 st.markdown(
