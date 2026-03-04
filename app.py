@@ -2464,7 +2464,7 @@ def generate_thumbnail_base64(image_bytes: bytes, filename: str = "",
 
 
 def save_record_to_db(supabase_client, user_nickname: str, result: dict,
-                      thumbnail_b64: str,
+                      thumbnail_b64: str, image_b64: str = "",
                       supabase_url: str = None, supabase_key: str = None) -> tuple:
     """将一条识别记录保存到 Supabase 数据库（完全线程安全，自包含 HTTP 请求）。
     返回 (success: bool, error_msg: str)。
@@ -2495,6 +2495,7 @@ def save_record_to_db(supabase_client, user_nickname: str, result: dict,
         "bird_description": result.get("bird_description", ""),
         "shoot_date": result.get("shoot_date", ""),
         "thumbnail_base64": thumbnail_b64,
+        "image_base64": image_b64,
     }
 
     url = f"{db_url}/rest/v1/bird_records"
@@ -2727,7 +2728,7 @@ def fetch_top_photos(limit: int = 10) -> list:
     try:
         params = (
             f"select=id,user_nickname,chinese_name,english_name,score,"
-            f"thumbnail_base64,shoot_date,identification_basis,bird_description,"
+            f"image_base64,thumbnail_base64,shoot_date,identification_basis,bird_description,"
             f"score_sharpness,score_composition,score_lighting,"
             f"score_background,score_pose,score_artistry,"
             f"order_chinese,family_chinese"
@@ -3533,8 +3534,10 @@ with tab_upload:
                     if supabase_client and current_nickname and _sb_url and _sb_key:
                         _update_file_step(fname, "💾 保存识别记录…")
                         thumb_b64 = generate_thumbnail_base64(image_bytes, fname)
+                        full_img_b64 = generate_thumbnail_base64(image_bytes, fname, max_width=1200)
                         db_saved, db_error, db_record_id = save_record_to_db(
                             supabase_client, current_nickname, result, thumb_b64,
+                            image_b64=full_img_b64,
                             supabase_url=_sb_url, supabase_key=_sb_key,
                         )
                     elif not _sb_url or not _sb_key:
@@ -3995,6 +3998,7 @@ with tab_gallery:
 
                 gallery_data_list.append({
                     "thumb": photo.get("thumbnail_base64", ""),
+                    "fullImg": photo.get("image_base64", ""),
                     "name": photo.get("chinese_name", "未知"),
                     "enName": photo.get("english_name", ""),
                     "score": sp_score,
@@ -4015,12 +4019,12 @@ with tab_gallery:
                 if gd["thumb"]:
                     img_tag = (
                         f'<img src="data:image/jpeg;base64,{gd["thumb"]}" '
-                        f'style="width:100%;aspect-ratio:4/3;object-fit:cover;'
+                        f'style="width:100%;object-fit:contain;'
                         f'border-radius:8px 8px 0 0;display:block;" loading="lazy" alt="{gd["name"]}">'
                     )
                 else:
                     img_tag = (
-                        '<div style="width:100%;aspect-ratio:4/3;'
+                        '<div style="width:100%;min-height:100px;'
                         'background:linear-gradient(135deg,#1a3a5c,#2d6a4f);'
                         'border-radius:8px 8px 0 0;display:flex;'
                         'align-items:center;justify-content:center;'
@@ -4057,6 +4061,7 @@ with tab_gallery:
             import streamlit.components.v1 as _components
             gallery_js_data = _json.dumps({
                 "thumbs": [gd["thumb"] for gd in gallery_data_list],
+                "fullImgs": [gd["fullImg"] for gd in gallery_data_list],
                 "details": [{
                     "name": gd["name"],
                     "enName": gd["enName"],
@@ -4164,11 +4169,13 @@ with tab_gallery:
                 // 打开 modal
                 function openModal(idx) {{
                     var d = galleryData.details[idx];
+                    var fullSrc = galleryData.fullImgs[idx];
                     var thumbSrc = galleryData.thumbs[idx];
+                    var imgSrc = fullSrc || thumbSrc;
                     var content = parentDoc.getElementById('galleryModalContent');
 
-                    var imgHtml = thumbSrc
-                        ? '<img class="modal-main-img" src="data:image/jpeg;base64,' + thumbSrc + '">'
+                    var imgHtml = imgSrc
+                        ? '<img class="modal-main-img" src="data:image/jpeg;base64,' + imgSrc + '">'
                         : '<div style="width:100%;height:300px;background:linear-gradient(135deg,#1a3a5c,#2d6a4f);display:flex;align-items:center;justify-content:center;font-size:60px;">📷</div>';
 
                     var taxonomyHtml = '';

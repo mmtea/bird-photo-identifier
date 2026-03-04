@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS bird_records (
     bird_description TEXT DEFAULT '',
     shoot_date TEXT DEFAULT '',
     thumbnail_base64 TEXT DEFAULT '',
+    image_base64 TEXT DEFAULT '',
     original_ai_name TEXT DEFAULT '',
     user_corrected_name TEXT DEFAULT '',
     created_at TIMESTAMPTZ DEFAULT NOW()
