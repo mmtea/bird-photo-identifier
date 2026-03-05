@@ -172,10 +172,12 @@ st.markdown("""
         text-align: left;
     }
 
-    /* 登录卡片 */
+    /* 登录卡片 — 默认隐藏，仅在未登录时通过内联 style 显示，
+       防止已登录 rerun 时短暂闪烁 */
     .login-card {
         text-align: center;
         padding: 20px 0 10px;
+        display: none;
     }
     .login-title {
         font-size: 20px;
@@ -939,6 +941,27 @@ components.html("""
                 `;
                 doc.head.appendChild(style);
             }
+
+            // 隐藏已登录后残留的登录输入框（JS 兜底，防止 :has() 不支持）
+            var loginInputs = doc.querySelectorAll('input[placeholder*="观鸟达人"]');
+            loginInputs.forEach(function(inp) {
+                // 向上找到 Streamlit 的 stTextInput 容器并隐藏
+                var container = inp.closest('[data-testid="stTextInput"]');
+                if (container) {
+                    container.style.display = 'none';
+                } else {
+                    // fallback: 隐藏最近的父级块
+                    var parent = inp.parentElement;
+                    while (parent && parent.tagName !== 'SECTION' && parent.tagName !== 'BODY') {
+                        if (parent.getAttribute('data-testid') || parent.classList.contains('stTextInput')) {
+                            parent.style.display = 'none';
+                            break;
+                        }
+                        parent = parent.parentElement;
+                    }
+                    inp.style.display = 'none';
+                }
+            });
 
             // 直接查找并隐藏右下角的元素
             var allFixed = doc.querySelectorAll('div, button, a, img');
@@ -2941,7 +2964,7 @@ if not st.session_state["user_nickname"]:
         unsafe_allow_html=True,
     )
     st.markdown(
-        '<div class="login-card">'
+        '<div class="login-card" style="display:block !important;">'
         '<p class="login-title">👋 欢迎来到影禽</p>'
         '<p class="login-subtitle">输入昵称，开启你的观鸟之旅</p>'
         '</div>',
@@ -2975,6 +2998,16 @@ else:
         st.session_state.pop("results_with_bytes", None)
         st.session_state.pop("zip_bytes", None)
         st.rerun()
+
+    # 已登录：隐藏可能残留的登录输入框（防止 rerun 时短暂闪烁）
+    st.markdown(
+        '<style>'
+        '[data-testid="stTextInput"]:has(input[placeholder*="观鸟达人"]) '
+        '{ display: none !important; }'
+        '.login-card { display: none !important; }'
+        '</style>',
+        unsafe_allow_html=True,
+    )
 
     # 已登录：全宽一体化顶栏 — Logo 左 + 用户名&退出 右
     st.markdown(
