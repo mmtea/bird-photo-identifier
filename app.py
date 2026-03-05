@@ -2952,13 +2952,16 @@ if not st.session_state["user_nickname"]:
         placeholder="例如：观鸟达人小明",
         label_visibility="collapsed",
         max_chars=20,
+        key="login_nickname_input",
     )
     if entered_nickname and entered_nickname.strip():
         st.session_state["user_nickname"] = entered_nickname.strip()
         st.query_params["nick"] = entered_nickname.strip()
+        # 清除输入框的 widget 状态，避免登录后残留
+        if "login_nickname_input" in st.session_state:
+            del st.session_state["login_nickname_input"]
         st.rerun()
-    if not entered_nickname:
-        st.stop()
+    st.stop()
 else:
     nickname_display = st.session_state["user_nickname"]
     if st.query_params.get("nick", "") != nickname_display:
