@@ -2968,17 +2968,22 @@ if not st.session_state["user_nickname"]:
         '</div>',
         unsafe_allow_html=True,
     )
-    entered_nickname = st.text_input(
-        "你的昵称",
-        placeholder="例如：观鸟达人小明",
-        label_visibility="collapsed",
-        max_chars=20,
-        key="login_nickname_input",
-    )
-    if entered_nickname and entered_nickname.strip():
-        st.session_state["user_nickname"] = entered_nickname.strip()
-        st.query_params["nick"] = entered_nickname.strip()
-        # 清除输入框的 widget 状态，避免登录后残留
+    login_col_input, login_col_btn = st.columns([4, 1], gap="small")
+    with login_col_input:
+        entered_nickname = st.text_input(
+            "你的昵称",
+            placeholder="例如：观鸟达人小明",
+            label_visibility="collapsed",
+            max_chars=20,
+            key="login_nickname_input",
+        )
+    with login_col_btn:
+        login_clicked = st.button("🚀 进入", use_container_width=True, key="login_btn")
+
+    nickname_value = (entered_nickname or "").strip()
+    if nickname_value and login_clicked:
+        st.session_state["user_nickname"] = nickname_value
+        st.query_params["nick"] = nickname_value
         if "login_nickname_input" in st.session_state:
             del st.session_state["login_nickname_input"]
         st.rerun()
