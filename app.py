@@ -172,12 +172,10 @@ st.markdown("""
         text-align: left;
     }
 
-    /* 登录卡片 — 默认隐藏，仅在未登录时通过内联 style 显示，
-       防止已登录 rerun 时短暂闪烁 */
+    /* 登录卡片 */
     .login-card {
         text-align: center;
         padding: 20px 0 10px;
-        display: none;
     }
     .login-title {
         font-size: 20px;
@@ -2964,7 +2962,7 @@ if not st.session_state["user_nickname"]:
         unsafe_allow_html=True,
     )
     st.markdown(
-        '<div class="login-card" style="display:block !important;">'
+        '<div class="login-card">'
         '<p class="login-title">👋 欢迎来到影禽</p>'
         '<p class="login-subtitle">输入昵称，开启你的观鸟之旅</p>'
         '</div>',
