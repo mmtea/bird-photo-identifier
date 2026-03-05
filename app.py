@@ -600,7 +600,6 @@ st.markdown("""
         border-top: none;
         width: 100%;
         box-sizing: border-box;
-        overflow: visible !important;
     }
     /* Tab 按钮行 */
     .stTabs [data-baseweb="tab-list"] {
