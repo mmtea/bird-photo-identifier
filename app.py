@@ -1939,7 +1939,7 @@ def _fetch_ebird_observations(query_points: list, ebird_api_key: str,
         try:
             url = (
                 f"https://api.ebird.org/v2/data/obs/geo/recent/{endpoint}?"
-                f"lat={lat:.4f}&lng={lng:.4f}&dist={api_dist}&back=3"
+                f"lat={lat:.4f}&lng={lng:.4f}&dist={api_dist}&back=7"
             )
             request = urllib.request.Request(url, headers={
                 "X-eBirdApiToken": ebird_api_key,
@@ -3313,7 +3313,7 @@ with tab_explore:
                 )
                 st.markdown(
                     f'<p style="font-size:12px; color:#888; margin:4px 0 8px;">'
-                    f'📍 {location_query}周边 {selected_range_label} · 近 3 天发现 <b style="color:#1a3a5c;">'
+                    f'📍 {location_query}周边 {selected_range_label} · 近 7 天发现 <b style="color:#1a3a5c;">'
                     f'{total_count}</b> 种{type_label}'
                     f'{new_species_hint}'
                     f'</p>',
@@ -3426,8 +3426,13 @@ with tab_explore:
                 if total_count > 15:
                     st.caption(f"还有 {total_count - 15} 种未显示…")
             else:
-                no_result_label = "我的新种" if is_new_species_mode else "热门鸟种"
-                st.info(f"🔍 近 3 天该区域暂无{no_result_label}记录，试试换个城市或扩大搜索范围？")
+                if is_new_species_mode:
+                    no_result_label = "我的新种"
+                elif is_notable_mode:
+                    no_result_label = "稀有鸟种"
+                else:
+                    no_result_label = "热门鸟种"
+                st.info(f"🔍 近 7 天该区域暂无{no_result_label}记录，试试换个城市或扩大搜索范围？")
         else:
             st.warning("⚠️ 无法识别该城市，请输入更具体的地名")
 
