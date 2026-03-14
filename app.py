@@ -2774,7 +2774,7 @@ def fetch_user_photos_by_species(chinese_names: tuple, city: str = "") -> dict:
         params = (
             f"select=chinese_name,thumbnail_base64"
             f"&chinese_name=in.({names_filter})"
-            f"&thumbnail_base64=neq."
+            f"&thumbnail_base64=gt."
             f"{extra_filter}"
             f"&order=created_at.desc"
             f"&limit=100"
