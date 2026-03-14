@@ -2485,7 +2485,8 @@ def generate_thumbnail_base64(image_bytes: bytes, filename: str = "",
 
 def save_record_to_db(supabase_client, user_nickname: str, result: dict,
                       thumbnail_b64: str, image_b64: str = "",
-                      supabase_url: str = None, supabase_key: str = None) -> tuple:
+                      supabase_url: str = None, supabase_key: str = None,
+                      shoot_city: str = "") -> tuple:
     """将一条识别记录保存到 Supabase 数据库（完全线程安全，自包含 HTTP 请求）。
     返回 (success: bool, error_msg: str)。
     必须通过 supabase_url/supabase_key 直接传入配置。
@@ -2516,6 +2517,7 @@ def save_record_to_db(supabase_client, user_nickname: str, result: dict,
         "shoot_date": result.get("shoot_date", ""),
         "thumbnail_base64": thumbnail_b64,
         "image_base64": image_b64,
+        "shoot_city": shoot_city,
     }
 
     url = f"{db_url}/rest/v1/bird_records"
@@ -2758,27 +2760,28 @@ def fetch_user_stats_from_records(records: list) -> dict:
 
 
 @st.cache_data(ttl=300, show_spinner=False)
-def fetch_user_photos_by_species(chinese_names: tuple) -> dict:
+def fetch_user_photos_by_species(chinese_names: tuple, city: str = "") -> dict:
     """按鸟种中文名批量查询用户上传的最新缩略图。
 
+    优先查询同城市的照片，无结果时降级为全国查询。
     返回 {chinese_name: thumbnail_base64} 映射，缓存 5 分钟。
     """
     if not chinese_names:
         return {}
-    try:
-        # 用 in 过滤器批量查询，取每种最新一条有缩略图的记录
+
+    def _query(extra_filter: str = "") -> dict:
         names_filter = ",".join(urllib.parse.quote(n) for n in chinese_names)
         params = (
             f"select=chinese_name,thumbnail_base64"
             f"&chinese_name=in.({names_filter})"
             f"&thumbnail_base64=neq."
+            f"{extra_filter}"
             f"&order=created_at.desc"
             f"&limit=100"
         )
         result = _supabase_request("GET", "bird_records", params=params)
         if not isinstance(result, list):
             return {}
-        # 每个鸟种只保留最新一条
         species_photo_map = {}
         for record in result:
             name = record.get("chinese_name", "")
@@ -2786,6 +2789,16 @@ def fetch_user_photos_by_species(chinese_names: tuple) -> dict:
             if name and thumb and name not in species_photo_map:
                 species_photo_map[name] = thumb
         return species_photo_map
+
+    try:
+        # 优先查同城市的照片
+        if city:
+            encoded_city = urllib.parse.quote(city)
+            city_results = _query(f"&shoot_city=eq.{encoded_city}")
+            if city_results:
+                return city_results
+        # 无同城结果时降级为全国查询
+        return _query()
     except Exception as exc:
         print(f"[用户照片] 查询失败: {exc}")
         return {}
@@ -3278,12 +3291,14 @@ with tab_explore:
                 )
                 photo_urls = fetch_species_photo_urls(species_codes_for_photos)
 
-                # 查询用户实拍照片（按鸟种中文名）
+                # 查询用户实拍照片（优先同城，降级全国）
                 chinese_names_for_photos = tuple(
                     bird["chinese_name"] for bird in recommendations[:15]
                     if bird.get("chinese_name")
                 )
-                user_photo_map = fetch_user_photos_by_species(chinese_names_for_photos)
+                user_photo_map = fetch_user_photos_by_species(
+                    chinese_names_for_photos, city=selected_city
+                )
 
                 new_count = sum(1 for r in recommendations if r["is_new_species"])
                 total_count = len(recommendations)
@@ -3685,6 +3700,7 @@ with tab_upload:
                             supabase_client, current_nickname, result, thumb_b64,
                             image_b64=full_img_b64,
                             supabase_url=_sb_url, supabase_key=_sb_key,
+                            shoot_city=st.session_state.get("loc_city", ""),
                         )
                     elif not _sb_url or not _sb_key:
                         db_error = "Supabase 配置在主线程中读取失败"

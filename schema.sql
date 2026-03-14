@@ -24,8 +24,12 @@ CREATE TABLE IF NOT EXISTS bird_records (
     image_base64 TEXT DEFAULT '',
     original_ai_name TEXT DEFAULT '',
     user_corrected_name TEXT DEFAULT '',
+    shoot_city TEXT DEFAULT '',
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- 新增 shoot_city 字段（已有数据库执行此语句）
+-- ALTER TABLE bird_records ADD COLUMN IF NOT EXISTS shoot_city TEXT DEFAULT '';
 
 -- 索引：按用户查询历史记录
 CREATE INDEX IF NOT EXISTS idx_bird_records_user ON bird_records (user_nickname, created_at DESC);
