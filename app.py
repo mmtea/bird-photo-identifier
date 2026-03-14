@@ -2046,6 +2046,56 @@ def translate_ebird_species(species_list: list, ebird_api_key: str,
         print(f"[翻译] eBird taxonomy API 查询中文名失败: {exc}")
     return translations
 
+@st.cache_data(ttl=86400, show_spinner=False)
+def reverse_geocode_locations(location_coords: tuple) -> dict:
+    """批量逆地理编码，将坐标转为中文地名。缓存 24 小时。
+
+    使用 OpenStreetMap Nominatim API（免费，无需 key），返回中文地名。
+    location_coords: ((lat, lng, location_name), ...) 元组
+    返回 {location_name: chinese_name} 映射。
+    """
+    result = {}
+    seen_coords = {}  # 相同坐标只查一次
+
+    for lat, lng, location_name in location_coords:
+        if not location_name or not lat or not lng:
+            continue
+        coord_key = (round(lat, 3), round(lng, 3))
+        if coord_key in seen_coords:
+            result[location_name] = seen_coords[coord_key]
+            continue
+        try:
+            url = (
+                f"https://nominatim.openstreetmap.org/reverse?"
+                f"lat={lat}&lon={lng}&format=json&accept-language=zh-CN"
+            )
+            request = urllib.request.Request(url, headers={
+                "User-Agent": "BirdEyeApp/1.0 (bird observation app)",
+            })
+            with urllib.request.urlopen(request, timeout=8) as response:
+                data = json.loads(response.read().decode("utf-8"))
+                address = data.get("address", {})
+                # 优先取景区/公园/自然保护区名，其次取区/县，再取城市
+                chinese_name = (
+                    address.get("tourism") or
+                    address.get("leisure") or
+                    address.get("natural") or
+                    address.get("park") or
+                    address.get("suburb") or
+                    address.get("quarter") or
+                    address.get("neighbourhood") or
+                    address.get("district") or
+                    address.get("county") or
+                    address.get("city") or
+                    location_name  # 兜底用原始英文名
+                )
+                result[location_name] = chinese_name
+                seen_coords[coord_key] = chinese_name
+        except Exception:
+            result[location_name] = location_name  # 失败时保留原名
+    return result
+
+
 def build_birding_recommendations(notable_species: list, user_species_set: set,
                                   name_translations: dict,
                                   is_new_species_mode: bool = False) -> list:
@@ -2086,8 +2136,8 @@ def build_birding_recommendations(notable_species: list, user_species_set: set,
             "longitude": species.get("longitude", 0),
         })
 
-    # 按地点分组，组内新种优先，再按中文名排序
-    recommendations.sort(key=lambda x: (x["location"], not x["is_new_species"], x["chinese_name"]))
+    # 新种优先排序（热门模式下新种仍排前面）
+    recommendations.sort(key=lambda x: (not x["is_new_species"], x["chinese_name"]))
     return recommendations
 
 @st.cache_data(ttl=86400, show_spinner=False)
@@ -3223,7 +3273,7 @@ with tab_explore:
                 key="sel_range",
             )
         selected_radius_km = distance_options[selected_range_label]
-        bird_type_options = ["🎯 我的新种", "🔭 稀有鸟种", "🔥 热门鸟种"]
+        bird_type_options = ["🎯 我的新种", "🔥 热门鸟种"]
         with type_col:
             selected_bird_type = st.radio(
                 "鸟种类型",
@@ -3233,7 +3283,6 @@ with tab_explore:
                 horizontal=True,
             )
         is_new_species_mode = selected_bird_type == bird_type_options[0]
-        is_notable_mode = selected_bird_type == bird_type_options[1]
 
         # 拼接地名用于地理编码
         location_query = selected_city
@@ -3244,15 +3293,10 @@ with tab_explore:
 
         if birding_lat and birding_lon:
             weather = fetch_current_weather(birding_lat, birding_lon)
-            # 稀有鸟种模式查 notable，其余两种模式查热门（数据更丰富）
-            if is_notable_mode:
-                bird_species = fetch_ebird_notable_nearby(
-                    birding_lat, birding_lon, ebird_api_key, radius_km=selected_radius_km,
-                )
-            else:
-                bird_species = fetch_ebird_popular_nearby(
-                    birding_lat, birding_lon, ebird_api_key, radius_km=selected_radius_km,
-                )
+            # 两种模式都查热门鸟种（数据更丰富），"我的新种"模式在后续排序时把未拍过的排前面
+            bird_species = fetch_ebird_popular_nearby(
+                birding_lat, birding_lon, ebird_api_key, radius_km=selected_radius_km,
+            )
 
             if weather:
                 from datetime import datetime as _dt
@@ -3308,6 +3352,14 @@ with tab_explore:
                 user_photo_map = fetch_user_photos_by_species(
                     chinese_names_for_photos, city=selected_city
                 )
+
+                # 批量逆地理编码，把英文地点名转为中文
+                location_coords_for_geocode = tuple(
+                    (bird.get("latitude", 0), bird.get("longitude", 0), bird.get("location", ""))
+                    for bird in recommendations[:15]
+                    if bird.get("location")
+                )
+                chinese_location_map = reverse_geocode_locations(location_coords_for_geocode)
 
                 new_count = sum(1 for r in recommendations if r["is_new_species"])
                 total_count = len(recommendations)
@@ -3385,7 +3437,8 @@ with tab_explore:
                     ebird_species_url = f"https://ebird.org/species/{bird.get('species_code', '')}"
                     bird_lat = bird.get("latitude", "")
                     bird_lng = bird.get("longitude", "")
-                    location_name = bird.get("location", "未知")
+                    raw_location = bird.get("location", "未知")
+                    location_name = chinese_location_map.get(raw_location, raw_location)
                     # 优先用坐标生成高德地图链接，无坐标则用地名搜索
                     if bird_lat and bird_lng:
                         encoded_location = urllib.parse.quote(location_name)
