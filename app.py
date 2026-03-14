@@ -2757,6 +2757,39 @@ def fetch_user_stats_from_records(records: list) -> dict:
     }
 
 
+@st.cache_data(ttl=300, show_spinner=False)
+def fetch_user_photos_by_species(chinese_names: tuple) -> dict:
+    """按鸟种中文名批量查询用户上传的最新缩略图。
+
+    返回 {chinese_name: thumbnail_base64} 映射，缓存 5 分钟。
+    """
+    if not chinese_names:
+        return {}
+    try:
+        # 用 in 过滤器批量查询，取每种最新一条有缩略图的记录
+        names_filter = ",".join(urllib.parse.quote(n) for n in chinese_names)
+        params = (
+            f"select=chinese_name,thumbnail_base64"
+            f"&chinese_name=in.({names_filter})"
+            f"&thumbnail_base64=neq."
+            f"&order=created_at.desc"
+            f"&limit=100"
+        )
+        result = _supabase_request("GET", "bird_records", params=params)
+        if not isinstance(result, list):
+            return {}
+        # 每个鸟种只保留最新一条
+        species_photo_map = {}
+        for record in result:
+            name = record.get("chinese_name", "")
+            thumb = record.get("thumbnail_base64", "")
+            if name and thumb and name not in species_photo_map:
+                species_photo_map[name] = thumb
+        return species_photo_map
+    except Exception as exc:
+        print(f"[用户照片] 查询失败: {exc}")
+        return {}
+
 @st.cache_data(ttl=60, show_spinner=False)
 def fetch_top_photos(limit: int = 10) -> list:
     """查询全局评分最高的照片（缓存 60 秒）"""
@@ -3245,6 +3278,13 @@ with tab_explore:
                 )
                 photo_urls = fetch_species_photo_urls(species_codes_for_photos)
 
+                # 查询用户实拍照片（按鸟种中文名）
+                chinese_names_for_photos = tuple(
+                    bird["chinese_name"] for bird in recommendations[:15]
+                    if bird.get("chinese_name")
+                )
+                user_photo_map = fetch_user_photos_by_species(chinese_names_for_photos)
+
                 new_count = sum(1 for r in recommendations if r["is_new_species"])
                 total_count = len(recommendations)
 
@@ -3272,7 +3312,22 @@ with tab_explore:
                     count_str = f" · {how_many}只" if how_many and how_many > 1 else ""
 
                     bird_photo_url = photo_urls.get(bird.get("species_code", ""), "")
-                    if bird_photo_url:
+                    user_thumb_b64 = user_photo_map.get(bird.get("chinese_name", ""), "")
+
+                    if user_thumb_b64:
+                        # 优先展示用户实拍照片，带"用户实拍"角标
+                        card_img_html = (
+                            f'<div style="position:relative;">'
+                            f'<img src="data:image/jpeg;base64,{user_thumb_b64}" '
+                            f'style="width:100%;height:140px;object-fit:cover;'
+                            f'border-radius:10px 10px 0 0;" loading="lazy" />'
+                            f'<span style="position:absolute;bottom:6px;left:6px;'
+                            f'background:rgba(0,0,0,0.55);color:#fff;font-size:9px;'
+                            f'padding:2px 6px;border-radius:6px;font-weight:600;">'
+                            f'📷 用户实拍</span>'
+                            f'</div>'
+                        )
+                    elif bird_photo_url:
                         card_img_html = (
                             f'<img src="{bird_photo_url}" '
                             f'style="width:100%;height:140px;object-fit:cover;'
