@@ -3295,6 +3295,20 @@ with tab_explore:
                         )
 
                     ebird_species_url = f"https://ebird.org/species/{bird.get('species_code', '')}"
+                    bird_lat = bird.get("latitude", "")
+                    bird_lng = bird.get("longitude", "")
+                    location_name = bird.get("location", "未知")
+                    # 优先用坐标生成高德地图链接，无坐标则用地名搜索
+                    if bird_lat and bird_lng:
+                        encoded_location = urllib.parse.quote(location_name)
+                        amap_url = (
+                            f"https://uri.amap.com/marker?"
+                            f"position={bird_lng},{bird_lat}"
+                            f"&name={encoded_location}&src=BirdEye&coordinate=wgs84"
+                        )
+                    else:
+                        encoded_location = urllib.parse.quote(location_name)
+                        amap_url = f"https://uri.amap.com/search?keyword={encoded_location}"
 
                     bird_cards_html += (
                         f'<a href="{ebird_species_url}" target="_blank" '
@@ -3311,9 +3325,12 @@ with tab_explore:
                         f'<div style="font-size:10px;color:#888;margin-top:2px;'
                         f'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'
                         f'{bird.get("english_name", "")}</div>'
-                        f'<div style="font-size:10px;color:#888;margin-top:1px;'
-                        f'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'
-                        f'📍 {bird.get("location", "未知")}</div>'
+                        f'<a href="{amap_url}" target="_blank" '
+                        f'style="display:block;font-size:10px;color:#4a7c59;margin-top:1px;'
+                        f'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'
+                        f'text-decoration:none;" '
+                        f'onclick="event.stopPropagation();">'
+                        f'📍 {location_name}</a>'
                         f'<div style="font-size:10px;color:#aaa;margin-top:1px;">'
                         f'{date_str}{count_str}</div>'
                         f'</div></div></a>'
