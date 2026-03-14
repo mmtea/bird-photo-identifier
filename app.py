@@ -3311,29 +3311,32 @@ with tab_explore:
                         amap_url = f"https://uri.amap.com/search?keyword={encoded_location}"
 
                     bird_cards_html += (
-                        f'<a href="{ebird_species_url}" target="_blank" '
-                        f'style="text-decoration:none; color:inherit;">'
                         f'<div style="min-width:160px;max-width:160px;background:#fff;'
                         f'border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,0.08);'
                         f'flex-shrink:0;overflow:hidden;position:relative;">'
                         f'{new_badge_html}'
+                        f'<a href="{ebird_species_url}" target="_blank" '
+                        f'style="text-decoration:none;color:inherit;display:block;">'
                         f'{card_img_html}'
+                        f'</a>'
                         f'<div style="padding:8px 10px;">'
+                        f'<a href="{ebird_species_url}" target="_blank" '
+                        f'style="text-decoration:none;color:inherit;">'
                         f'<div style="font-size:13px;font-weight:600;color:#1a3a5c;'
                         f'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'
                         f'{bird["chinese_name"]}</div>'
                         f'<div style="font-size:10px;color:#888;margin-top:2px;'
                         f'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'
                         f'{bird.get("english_name", "")}</div>'
+                        f'</a>'
                         f'<a href="{amap_url}" target="_blank" '
                         f'style="display:block;font-size:10px;color:#4a7c59;margin-top:1px;'
                         f'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'
-                        f'text-decoration:none;" '
-                        f'onclick="event.stopPropagation();">'
+                        f'text-decoration:none;">'
                         f'📍 {location_name}</a>'
                         f'<div style="font-size:10px;color:#aaa;margin-top:1px;">'
                         f'{date_str}{count_str}</div>'
-                        f'</div></div></a>'
+                        f'</div></div>'
                     )
 
                 st.markdown(
