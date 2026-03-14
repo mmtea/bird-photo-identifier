@@ -2047,10 +2047,12 @@ def translate_ebird_species(species_list: list, ebird_api_key: str,
     return translations
 
 def build_birding_recommendations(notable_species: list, user_species_set: set,
-                                  name_translations: dict) -> list:
+                                  name_translations: dict,
+                                  is_new_species_mode: bool = False) -> list:
     """构建个性化观鸟推荐列表。
 
-    将 eBird 稀有鸟种与用户已拍鸟种对比，标注是否为新种。
+    将 eBird 鸟种与用户已拍鸟种对比，标注是否为新种。
+    is_new_species_mode=True 时只返回用户未拍过的鸟种（即"我的新种"模式）。
     返回按推荐优先级排序的列表。
     """
     recommendations = []
@@ -2067,6 +2069,10 @@ def build_birding_recommendations(notable_species: list, user_species_set: set,
         if scientific_name and scientific_name in user_species_set:
             is_new_species = False
 
+        # "我的新种"模式下，跳过已拍过的鸟种
+        if is_new_species_mode and not is_new_species:
+            continue
+
         recommendations.append({
             "species_code": species.get("species_code", ""),
             "english_name": english_name,
@@ -2080,7 +2086,7 @@ def build_birding_recommendations(notable_species: list, user_species_set: set,
             "longitude": species.get("longitude", 0),
         })
 
-    # 新种优先排序
+    # 新种优先排序（热门模式下新种仍排前面）
     recommendations.sort(key=lambda x: (not x["is_new_species"], x["chinese_name"]))
     return recommendations
 
@@ -3217,7 +3223,7 @@ with tab_explore:
                 key="sel_range",
             )
         selected_radius_km = distance_options[selected_range_label]
-        bird_type_options = ["🔭 稀有鸟种", "🔥 热门鸟种"]
+        bird_type_options = ["🎯 我的新种", "🔥 热门鸟种"]
         with type_col:
             selected_bird_type = st.radio(
                 "鸟种类型",
@@ -3226,7 +3232,7 @@ with tab_explore:
                 key="sel_bird_type",
                 horizontal=True,
             )
-        is_notable_mode = selected_bird_type == bird_type_options[0]
+        is_new_species_mode = selected_bird_type == bird_type_options[0]
 
         # 拼接地名用于地理编码
         location_query = selected_city
@@ -3237,14 +3243,10 @@ with tab_explore:
 
         if birding_lat and birding_lon:
             weather = fetch_current_weather(birding_lat, birding_lon)
-            if is_notable_mode:
-                bird_species = fetch_ebird_notable_nearby(
-                    birding_lat, birding_lon, ebird_api_key, radius_km=selected_radius_km,
-                )
-            else:
-                bird_species = fetch_ebird_popular_nearby(
-                    birding_lat, birding_lon, ebird_api_key, radius_km=selected_radius_km,
-                )
+            # 两种模式都查热门鸟种（数据更丰富），"我的新种"模式在后续排序时把未拍过的排前面
+            bird_species = fetch_ebird_popular_nearby(
+                birding_lat, birding_lon, ebird_api_key, radius_km=selected_radius_km,
+            )
 
             if weather:
                 from datetime import datetime as _dt
@@ -3282,7 +3284,8 @@ with tab_explore:
                             user_species_set.add(record["english_name"])
 
                 recommendations = build_birding_recommendations(
-                    bird_species, user_species_set, name_translations
+                    bird_species, user_species_set, name_translations,
+                    is_new_species_mode=is_new_species_mode,
                 )
 
                 species_codes_for_photos = tuple(
@@ -3303,12 +3306,16 @@ with tab_explore:
                 new_count = sum(1 for r in recommendations if r["is_new_species"])
                 total_count = len(recommendations)
 
-                type_label = "稀有鸟种" if is_notable_mode else "热门鸟种"
+                type_label = "我的新种" if is_new_species_mode else "热门鸟种"
+                new_species_hint = (
+                    f'，其中 <b style="color:#4a7c59;">{new_count}</b> 种你还没拍过 🎯'
+                    if (not is_new_species_mode and new_count > 0) else ""
+                )
                 st.markdown(
                     f'<p style="font-size:12px; color:#888; margin:4px 0 8px;">'
                     f'📍 {location_query}周边 {selected_range_label} · 近 7 天发现 <b style="color:#1a3a5c;">'
                     f'{total_count}</b> 种{type_label}'
-                    f'{"，其中 <b style=color:#4a7c59;>" + str(new_count) + "</b> 种你还没拍过 🎯" if new_count > 0 else ""}'
+                    f'{new_species_hint}'
                     f'</p>',
                     unsafe_allow_html=True,
                 )
@@ -3419,7 +3426,7 @@ with tab_explore:
                 if total_count > 15:
                     st.caption(f"还有 {total_count - 15} 种未显示…")
             else:
-                no_result_label = "稀有鸟种" if is_notable_mode else "热门鸟种"
+                no_result_label = "我的新种" if is_new_species_mode else "热门鸟种"
                 st.info(f"🔍 近 7 天该区域暂无{no_result_label}记录，试试换个城市或扩大搜索范围？")
         else:
             st.warning("⚠️ 无法识别该城市，请输入更具体的地名")
